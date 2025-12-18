@@ -1,0 +1,5 @@
+{
+  "name": "WatchQuest",
+  "description": "A social tracking application for movies and series featuring lists, progress tracking, badges, and user interactions.",
+  "requestFramePermissions": []
+}
