@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { AVAILABLE_EMOJIS } from '../services/mockData';
 import { MediaList, Reaction, ReportReason, WatchStatus } from '../types';
@@ -146,11 +147,11 @@ const FeedCard: React.FC<{ list: MediaList; onOpen: () => void; onReport: () => 
     // Calculate progress for the feed view
     const totalItems = list.items.length;
     
-    // NEW CALCULATION
+    // NEW CALCULATION - Updated to use item.media
     const totalProgressValue = list.items.reduce((acc, item) => {
         if (item.status === WatchStatus.WATCHED) return acc + 100;
         if (item.status === WatchStatus.WATCHING) {
-            const duration = parseInt(item.movie.duration) || 120;
+            const duration = parseInt(item.media.duration) || 120;
             const current = item.progressMinutes || 0;
             const p = Math.min(99, (current / duration) * 100);
             return acc + p;
@@ -217,11 +218,11 @@ const FeedCard: React.FC<{ list: MediaList; onOpen: () => void; onReport: () => 
                 <h3 className="text-lg font-bold text-white mb-1">{list.title}</h3>
                 <p className="text-sm text-gray-300 mb-3 line-clamp-2">{list.description}</p>
                 
-                {/* Mini Poster Grid */}
+                {/* Mini Poster Grid - Updated to use item.media */}
                 <div className="flex space-x-2 overflow-x-auto pb-2 scrollbar-hide pointer-events-none">
                     {list.items.slice(0, 4).map((item, idx) => (
                         <div key={idx} className="relative flex-shrink-0 w-20">
-                            <img src={item.movie.poster} className="w-full rounded-md shadow-md aspect-[2/3] object-cover" />
+                            <img src={item.media.poster} className="w-full rounded-md shadow-md aspect-[2/3] object-cover" />
                             {item.status === 'Watched' && (
                                 <div className="absolute top-1 right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center border border-white">
                                     <i className="fas fa-check text-[8px]"></i>

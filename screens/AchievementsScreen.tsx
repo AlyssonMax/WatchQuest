@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/db';
 import { SYSTEM_BADGES } from '../services/mockData';
@@ -23,7 +24,12 @@ export const AchievementsScreen: React.FC<{ onBack: () => void }> = ({ onBack })
 
     const loadData = async () => {
         try {
-            const u = await db.getUser();
+            // Fix: Changed db.getUser() (which requires an ID) to db.getCurrentUser()
+            const u = await db.getCurrentUser();
+            if (!u) {
+                setLoading(false);
+                return;
+            }
             const stats = await db.getAchievementStats(u.id);
             setUser(u);
 

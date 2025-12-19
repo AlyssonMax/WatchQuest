@@ -1,4 +1,5 @@
-import { Movie } from '../types';
+
+import { Movie, MediaType } from '../types';
 
 const API_KEY = 'b9bd48a6'; // Demo key. In production, use process.env.
 const BASE_URL = 'https://www.omdbapi.com/';
@@ -65,6 +66,7 @@ const mapOmdbToMovie = (data: OmdbDetailResult): Movie => {
         poster: data.Poster !== "N/A" ? data.Poster : "https://placehold.co/300x450?text=No+Poster",
         rating: parseFloat(data.imdbRating) || 0,
         synopsis: data.Plot !== "N/A" ? data.Plot : "No description available.",
-        availableOn: [] // OMDb doesn't provide streaming info
+        availableOn: [], // OMDb doesn't provide streaming info
+        type: MediaType.MOVIE // Explicitly setting type
     };
 };

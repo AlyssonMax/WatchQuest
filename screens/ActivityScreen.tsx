@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/db';
 import { ActivityItem } from '../types';
@@ -77,12 +78,12 @@ export const ActivityScreen: React.FC<{ onNavigate: (tab: string, params?: any) 
                                     onClick={() => onNavigate('list_detail', { listId: item.data.id })}
                                 >
                                     <div className="flex gap-3">
-                                        {/* Mini Poster Stack */}
+                                        {/* Mini Poster Stack - Updated to use li.media */}
                                         <div className="flex -space-x-4 overflow-hidden w-20 flex-shrink-0">
                                             {item.data.items.slice(0, 2).map((li: any, idx: number) => (
                                                 <img 
                                                     key={idx} 
-                                                    src={li.movie.poster} 
+                                                    src={li.media.poster} 
                                                     className="w-10 h-14 rounded shadow-lg object-cover border border-gray-800" 
                                                 />
                                             ))}

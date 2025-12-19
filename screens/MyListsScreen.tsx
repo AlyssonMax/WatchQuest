@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { db } from '../services/db';
 import { MediaList, WatchStatus } from '../types';
@@ -63,11 +64,11 @@ export const MyListsScreen: React.FC<{ onNavigate: (tab: string, params?: any) =
                         const total = list.items.length;
                         const watched = list.items.filter(i => i.status === WatchStatus.WATCHED).length;
                         
-                        // NEW CALCULATION
+                        // NEW CALCULATION - Updated to use item.media
                         const totalProgressValue = list.items.reduce((acc, item) => {
                             if (item.status === WatchStatus.WATCHED) return acc + 100;
                             if (item.status === WatchStatus.WATCHING) {
-                                const duration = parseInt(item.movie.duration) || 120;
+                                const duration = parseInt(item.media.duration) || 120;
                                 const current = item.progressMinutes || 0;
                                 const p = Math.min(99, (current / duration) * 100);
                                 return acc + p;

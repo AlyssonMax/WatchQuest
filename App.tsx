@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Layout } from './components/Layout';
 import { HomeScreen } from './screens/HomeScreen';
@@ -85,10 +86,7 @@ export default function App() {
                 listId={selectedListParams.id}
                 readOnly={selectedListParams.readOnly}
                 onBack={() => {
-                    // Logic to figure out where to go back to, or just default to previous tab if simple
-                    // For now, simpler to just go to previous tab logically or home/mylists depending on context
-                    // But our router is simple. Let's assume standard back or home.
-                    setActiveTab('home'); // Simplification for this router
+                    setActiveTab('home');
                 }} 
                 onNavigate={navigateTo} 
               /> 
@@ -103,7 +101,7 @@ export default function App() {
       case 'achievements':
         return <AchievementsScreen onBack={() => navigateTo('profile')} />;
       case 'admin':
-        return <AdminScreen onBack={() => navigateTo('profile')} />;
+        return <AdminScreen onBack={() => navigateTo('profile')} onNavigateToPost={(id) => navigateTo('list_detail', { listId: id, readOnly: true })} />;
       case 'notifications':
         return <NotificationsScreen onNavigate={navigateTo} />;
       case 'settings':

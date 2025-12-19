@@ -1,4 +1,5 @@
-import { Badge, ListItem, MediaList, Movie, PrivacyLevel, User, WatchStatus, UserRole, BadgeType, ListCategory } from '../types';
+
+import { Badge, ListItem, MediaList, Movie, PrivacyLevel, User, WatchStatus, UserRole, BadgeType, ListCategory, MediaType } from '../types';
 
 // SYSTEM ACHIEVEMENTS DEFINITIONS (Generic App Themed)
 export const SYSTEM_BADGES = {
@@ -55,7 +56,10 @@ export const CURRENT_USER: User = {
     comments: true,
     follows: true,
     mentions: true
-  }
+  },
+  strikes: [],
+  // Added missing isPermanentlyBanned property
+  isPermanentlyBanned: false
 };
 
 // Admin User (Dwight Schrute)
@@ -84,7 +88,10 @@ export const ADMIN_USER: User = {
         comments: true,
         follows: true,
         mentions: true
-    }
+    },
+    strikes: [],
+    // Added missing isPermanentlyBanned property
+    isPermanentlyBanned: false
 };
 
 // Additional Mock Users
@@ -114,7 +121,10 @@ export const ADDITIONAL_USERS: User[] = [
             comments: true,
             follows: true,
             mentions: true
-        }
+        },
+        strikes: [],
+        // Added missing isPermanentlyBanned property
+        isPermanentlyBanned: false
     },
     {
         id: 'u3',
@@ -141,7 +151,10 @@ export const ADDITIONAL_USERS: User[] = [
             comments: true,
             follows: true,
             mentions: true
-        }
+        },
+        strikes: [],
+        // Added missing isPermanentlyBanned property
+        isPermanentlyBanned: false
     },
     {
         id: 'u4',
@@ -168,7 +181,10 @@ export const ADDITIONAL_USERS: User[] = [
             comments: true,
             follows: true,
             mentions: true
-        }
+        },
+        strikes: [],
+        // Added missing isPermanentlyBanned property
+        isPermanentlyBanned: false
     },
     {
         id: 'u5',
@@ -195,7 +211,10 @@ export const ADDITIONAL_USERS: User[] = [
             comments: true,
             follows: true,
             mentions: true
-        }
+        },
+        strikes: [],
+        // Added missing isPermanentlyBanned property
+        isPermanentlyBanned: false
     },
     {
         id: 'u6',
@@ -222,7 +241,10 @@ export const ADDITIONAL_USERS: User[] = [
             comments: true,
             follows: true,
             mentions: true
-        }
+        },
+        strikes: [],
+        // Added missing isPermanentlyBanned property
+        isPermanentlyBanned: false
     },
     {
         id: 'u7',
@@ -249,7 +271,10 @@ export const ADDITIONAL_USERS: User[] = [
             comments: true,
             follows: true,
             mentions: true
-        }
+        },
+        strikes: [],
+        // Added missing isPermanentlyBanned property
+        isPermanentlyBanned: false
     },
     {
         id: 'u8',
@@ -276,7 +301,10 @@ export const ADDITIONAL_USERS: User[] = [
             comments: true,
             follows: true,
             mentions: true
-        }
+        },
+        strikes: [],
+        // Added missing isPermanentlyBanned property
+        isPermanentlyBanned: false
     },
     {
         id: 'u9',
@@ -303,21 +331,24 @@ export const ADDITIONAL_USERS: User[] = [
             comments: true,
             follows: true,
             mentions: true
-        }
+        },
+        strikes: [],
+        // Added missing isPermanentlyBanned property
+        isPermanentlyBanned: false
     }
 ];
 
-// Mock Movies (References from the show)
+// Mock Movies (References from the show) - Updated with type
 export const MOCK_MOVIES: Movie[] = [
-  { id: 'm1', title: 'Threat Level Midnight', year: 2011, duration: '120 min', rating: 10.0, poster: 'https://placehold.co/300x450/000000/FFFFFF/png?text=Threat+Level+Midnight', synopsis: 'After secret agent Michael Scarn is forced into retirement, he is brought back to prevent Goldenface from blowing up the NHL All-Star Game.', availableOn: ['YouTube'] },
-  { id: 'm2', title: 'Die Hard', year: 1988, duration: '132 min', rating: 8.2, poster: 'https://placehold.co/300x450/7f1d1d/FFFFFF/png?text=Die+Hard', synopsis: 'An NYPD officer tries to save his wife and several others taken hostage by German terrorists during a Christmas party.', availableOn: ['HBO Max'] },
-  { id: 'm3', title: 'The Devil Wears Prada', year: 2006, duration: '109 min', rating: 6.9, poster: 'https://placehold.co/300x450/be185d/FFFFFF/png?text=Devil+Wears+Prada', synopsis: 'A smart but sensible new graduate lands a job as an assistant to Miranda Priestly, the demanding editor-in-chief of a high fashion magazine.', availableOn: ['Disney+', 'Hulu'] },
-  { id: 'm4', title: 'Million Dollar Baby', year: 2004, duration: '132 min', rating: 8.1, poster: 'https://placehold.co/300x450/1e293b/FFFFFF/png?text=Million+Dollar+Baby', synopsis: 'A determined woman works with a hardened boxing trainer to become a professional. (Michael Scott thinks Hilary Swank is hot).', availableOn: ['Netflix'] },
-  { id: 'm5', title: 'Varsity Blues', year: 1999, duration: '106 min', rating: 6.5, poster: 'https://placehold.co/300x450/1d4ed8/FFFFFF/png?text=Varsity+Blues', synopsis: 'A backup quarterback is chosen to lead a Texas football team to victory. (Featured in Movie Monday).', availableOn: ['Prime Video'] },
-  { id: 'm6', title: 'Weekend at Bernie\'s', year: 1989, duration: '97 min', rating: 6.4, poster: 'https://placehold.co/300x450/f59e0b/FFFFFF/png?text=Weekend+at+Bernies', synopsis: 'Two losers try to pretend that their murdered employer is really alive.', availableOn: ['HBO Max'] },
+  { id: 'm1', title: 'Threat Level Midnight', year: 2011, duration: '120 min', rating: 10.0, poster: 'https://placehold.co/300x450/000000/FFFFFF/png?text=Threat+Level+Midnight', synopsis: 'After secret agent Michael Scarn is forced into retirement, he is brought back to prevent Goldenface from blowing up the NHL All-Star Game.', availableOn: ['YouTube'], type: MediaType.MOVIE },
+  { id: 'm2', title: 'Die Hard', year: 1988, duration: '132 min', rating: 8.2, poster: 'https://placehold.co/300x450/7f1d1d/FFFFFF/png?text=Die+Hard', synopsis: 'An NYPD officer tries to save his wife and several others taken hostage by German terrorists during a Christmas party.', availableOn: ['HBO Max'], type: MediaType.MOVIE },
+  { id: 'm3', title: 'The Devil Wears Prada', year: 2006, duration: '109 min', rating: 6.9, poster: 'https://placehold.co/300x450/be185d/FFFFFF/png?text=Devil+Wears+Prada', synopsis: 'A smart but sensible new graduate lands a job as an assistant to Miranda Priestly, the demanding editor-in-chief of a high fashion magazine.', availableOn: ['Disney+', 'Hulu'], type: MediaType.MOVIE },
+  { id: 'm4', title: 'Million Dollar Baby', year: 2004, duration: '132 min', rating: 8.1, poster: 'https://placehold.co/300x450/1e293b/FFFFFF/png?text=Million+Dollar+Baby', synopsis: 'A determined woman works with a hardened boxing trainer to become a professional. (Michael Scott thinks Hilary Swank is hot).', availableOn: ['Netflix'], type: MediaType.MOVIE },
+  { id: 'm5', title: 'Varsity Blues', year: 1999, duration: '106 min', rating: 6.5, poster: 'https://placehold.co/300x450/1d4ed8/FFFFFF/png?text=Varsity+Blues', synopsis: 'A backup quarterback is chosen to lead a Texas football team to victory. (Featured in Movie Monday).', availableOn: ['Prime Video'], type: MediaType.MOVIE },
+  { id: 'm6', title: 'Weekend at Bernie\'s', year: 1989, duration: '97 min', rating: 6.4, poster: 'https://placehold.co/300x450/f59e0b/FFFFFF/png?text=Weekend+at+Bernies', synopsis: 'Two losers try to pretend that their murdered employer is really alive.', availableOn: ['HBO Max'], type: MediaType.MOVIE },
 ];
 
-// Mock Lists
+// Mock Lists - Updated to use media property
 export const MOCK_LISTS: MediaList[] = [
   {
     id: 'l1',
@@ -332,13 +363,13 @@ export const MOCK_LISTS: MediaList[] = [
       id: 'b_scarn',
       name: 'Agent Scarn',
       description: 'Completed Michael\'s masterpiece.',
-      icon: 'fa-gun', 
+      icon: 'https://cdn-icons-png.flaticon.com/512/711/711105.png', // Spy PNG
       type: BadgeType.COMMUNITY,
       earnedDate: '',
     },
     items: [
-      { movie: MOCK_MOVIES[0], status: WatchStatus.WATCHED, progressMinutes: 120 },
-      { movie: MOCK_MOVIES[1], status: WatchStatus.WATCHING, progressMinutes: 45 },
+      { media: MOCK_MOVIES[0], status: WatchStatus.WATCHED, progressMinutes: 120 },
+      { media: MOCK_MOVIES[1], status: WatchStatus.WATCHING, progressMinutes: 45 },
     ],
     reactions: [
       { id: 'r1', userId: 'admin1', emoji: '🔥', timestamp: Date.now() },
@@ -359,12 +390,12 @@ export const MOCK_LISTS: MediaList[] = [
         id: 'b_beets',
         name: 'Beet Master',
         description: 'You have learned the way of the Schrute.',
-        icon: 'fa-leaf',
+        icon: 'https://cdn-icons-png.flaticon.com/512/2909/2909893.png', // Beet PNG
         type: BadgeType.COMMUNITY,
         earnedDate: '',
     },
     items: [
-      { movie: MOCK_MOVIES[5], status: WatchStatus.WATCHED, progressMinutes: 97 }, // Weekend at Bernies (He would analyze the corpse preservation)
+      { media: MOCK_MOVIES[5], status: WatchStatus.WATCHED, progressMinutes: 97 }, // Weekend at Bernies (He would analyze the corpse preservation)
     ],
     reactions: [
         { id: 'r3', userId: 'u9', emoji: '❤️', timestamp: Date.now() }, // Angela
@@ -381,7 +412,7 @@ export const MOCK_LISTS: MediaList[] = [
     category: ListCategory.GENRE,
     privacy: PrivacyLevel.FOLLOWERS,
     items: [
-      { movie: MOCK_MOVIES[2], status: WatchStatus.WATCHED, progressMinutes: 109 },
+      { media: MOCK_MOVIES[2], status: WatchStatus.WATCHED, progressMinutes: 109 },
     ],
     reactions: [
         { id: 'r4', userId: 'u3', emoji: '👏', timestamp: Date.now() }, // Pam

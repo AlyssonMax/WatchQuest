@@ -1,5 +1,6 @@
+
 import React, { useState, useRef, useEffect } from 'react';
-import { MediaList, Movie, PrivacyLevel, ListCategory } from '../types';
+import { MediaList, Movie, PrivacyLevel, ListCategory, MediaType } from '../types';
 import { db } from '../services/db';
 import { compressImage, processPatchImage } from '../services/imageUtils';
 
@@ -13,27 +14,23 @@ const STREAMING_SERVICES = [
 ];
 
 export const CreateListScreen: React.FC<{ onSave: () => void; onCancel: () => void }> = ({ onSave, onCancel }) => {
-    // List Core Data
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [category, setCategory] = useState<ListCategory>(ListCategory.GENERAL);
     const [privacy, setPrivacy] = useState<PrivacyLevel>(PrivacyLevel.PUBLIC);
     
-    // Patch / Trophy Data
     const [patchImage, setPatchImage] = useState<string>('');
     const patchInputRef = useRef<HTMLInputElement>(null);
 
-    // Similarity Check Data
     const [similarLists, setSimilarLists] = useState<MediaList[]>([]);
     
-    // Movie Selection Data
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<Movie[]>([]); 
     const [selectedMovies, setSelectedMovies] = useState<Movie[]>([]);
     
     const [isSaving, setIsSaving] = useState(false);
+    const [isSearching, setIsSearching] = useState(false);
 
-    // Manual Entry States
     const [showManual, setShowManual] = useState(false);
     const [customTitle, setCustomTitle] = useState('');
     const [customYear, setCustomYear] = useState('');
@@ -60,13 +57,20 @@ export const CreateListScreen: React.FC<{ onSave: () => void; onCancel: () => vo
     useEffect(() => {
         const performSearch = async () => {
             if (searchQuery.length > 1) {
-                const results = await db.searchGlobalMovies(searchQuery);
-                setSearchResults(results);
+                setIsSearching(true);
+                try {
+                    const results = await db.searchGlobalMovies(searchQuery);
+                    setSearchResults(results);
+                } catch (e) {
+                    console.error("Search failed", e);
+                } finally {
+                    setIsSearching(false);
+                }
             } else {
                 setSearchResults([]);
             }
         };
-        const timeoutId = setTimeout(performSearch, 300);
+        const timeoutId = setTimeout(performSearch, 500);
         return () => clearTimeout(timeoutId);
     }, [searchQuery]);
 
@@ -76,7 +80,6 @@ export const CreateListScreen: React.FC<{ onSave: () => void; onCancel: () => vo
         }
         setSearchQuery('');
         setSearchResults([]);
-        setShowManual(false);
     };
 
     const handlePosterUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -114,24 +117,6 @@ export const CreateListScreen: React.FC<{ onSave: () => void; onCancel: () => vo
     const handleAddCustomMovie = async () => {
         if (!customTitle) return;
         
-        // 1. Logic Check: Does this movie already exist in Global DB?
-        // This prevents duplicate entries (e.g., "Inception" vs "Inception")
-        const existing = await db.searchGlobalMovies(customTitle);
-        const exactMatch = existing.find(m => m.title.toLowerCase() === customTitle.toLowerCase());
-
-        if (exactMatch) {
-            if (confirm(`We found "${exactMatch.title}" (${exactMatch.year}) in the database. Use that instead?`)) {
-                handleAddMovie(exactMatch);
-                // Reset form
-                setCustomTitle('');
-                setCustomYear('');
-                setCustomPoster('');
-                setCustomStreamings([]);
-                return;
-            }
-        }
-
-        // 2. Create New
         const posterUrl = customPoster.trim() 
             ? customPoster 
             : `https://placehold.co/300x450/374151/FFFFFF/png?text=${encodeURIComponent(customTitle)}`;
@@ -144,7 +129,8 @@ export const CreateListScreen: React.FC<{ onSave: () => void; onCancel: () => vo
             poster: posterUrl,
             rating: 0,
             synopsis: 'User added content.',
-            availableOn: customStreamings // Added streaming options
+            availableOn: customStreamings,
+            type: MediaType.MOVIE
         };
 
         handleAddMovie(newMovie);
@@ -152,6 +138,7 @@ export const CreateListScreen: React.FC<{ onSave: () => void; onCancel: () => vo
         setCustomYear('');
         setCustomPoster('');
         setCustomStreamings([]);
+        setShowManual(false);
     };
 
     const handleRemoveMovie = (id: string) => {
@@ -159,6 +146,7 @@ export const CreateListScreen: React.FC<{ onSave: () => void; onCancel: () => vo
     };
 
     const handleSave = async () => {
+        if (!title || selectedMovies.length === 0 || isSaving) return;
         setIsSaving(true);
         try {
             await db.createList(title, description, selectedMovies, privacy, category, patchImage);
@@ -170,9 +158,10 @@ export const CreateListScreen: React.FC<{ onSave: () => void; onCancel: () => vo
     };
 
     return (
-        <div className="p-4 h-full flex flex-col">
-             <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold">Create List</h2>
+        <div className="p-4 h-full flex flex-col bg-gray-900 overflow-hidden">
+             {/* HEADER COM BOTÃO DE SALVAR */}
+             <div className="flex items-center justify-between mb-6 sticky top-0 bg-gray-900 z-50 py-2 border-b border-gray-800">
+                <h2 className="text-xl font-bold">Create List</h2>
                 <div className="flex items-center space-x-2">
                     <button
                         onClick={onCancel}
@@ -183,37 +172,35 @@ export const CreateListScreen: React.FC<{ onSave: () => void; onCancel: () => vo
                     <button 
                         onClick={handleSave}
                         disabled={!title || selectedMovies.length === 0 || isSaving}
-                        className="bg-purple-600 text-white px-4 py-2 rounded-full text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-500 transition-colors flex items-center"
+                        className="bg-purple-600 text-white px-5 py-2 rounded-full text-xs font-black uppercase tracking-widest disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-500 transition-all shadow-lg active:scale-95 flex items-center"
                     >
                         {isSaving ? <i className="fas fa-circle-notch fa-spin mr-2"></i> : null}
-                        Save
+                        Save List
                     </button>
                 </div>
             </div>
 
-            <div className="space-y-4 flex-1 overflow-y-auto pb-20">
-                {/* 1. Basic Info & Similarity Alert */}
-                <div className="space-y-2">
-                    <label className="text-xs text-gray-400 uppercase font-bold tracking-wider">List Details</label>
+            <div className="space-y-6 flex-1 overflow-y-auto pb-24 scrollbar-hide">
+                {/* 1. Basic Info */}
+                <div className="space-y-4">
                     <input 
                         type="text" 
                         placeholder="List Title (e.g. Summer Vibes)" 
-                        className="w-full bg-gray-800 text-white p-3 rounded-xl border border-gray-700 focus:border-purple-500 focus:outline-none transition-colors"
+                        className="w-full bg-gray-800 text-white p-4 rounded-2xl border border-gray-700 focus:border-purple-500 focus:outline-none transition-all"
                         value={title}
                         onChange={(e) => setTitle(e.target.value)}
                     />
                     
-                    {/* SIMILARITY ALERT */}
                     {similarLists.length > 0 && (
-                        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 animate-fade-in">
-                            <p className="text-xs text-yellow-500 font-bold mb-2">
+                        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3 animate-fade-in">
+                            <p className="text-[10px] text-yellow-500 font-black uppercase mb-2">
                                 <i className="fas fa-exclamation-triangle mr-1"></i> Similar lists found:
                             </p>
-                            <div className="flex gap-2 overflow-x-auto pb-1">
+                            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
                                 {similarLists.map(l => (
-                                    <div key={l.id} className="bg-gray-900 p-2 rounded border border-gray-700 min-w-[120px]">
-                                        <p className="text-xs font-bold truncate">{l.title}</p>
-                                        <p className="text-[10px] text-gray-500 truncate">by {l.creatorName}</p>
+                                    <div key={l.id} className="bg-gray-900 p-2 rounded-lg border border-gray-800 min-w-[140px]">
+                                        <p className="text-[11px] font-bold truncate text-white">{l.title}</p>
+                                        <p className="text-[9px] text-gray-500 truncate">by {l.creatorName}</p>
                                     </div>
                                 ))}
                             </div>
@@ -221,58 +208,47 @@ export const CreateListScreen: React.FC<{ onSave: () => void; onCancel: () => vo
                     )}
 
                     <textarea 
-                        placeholder="Short description..." 
-                        className="w-full bg-gray-800 text-white p-3 rounded-xl border border-gray-700 focus:border-purple-500 focus:outline-none transition-colors h-24 resize-none"
+                        placeholder="What is this collection about?" 
+                        className="w-full bg-gray-800 text-white p-4 rounded-2xl border border-gray-700 focus:border-purple-500 focus:outline-none transition-all h-24 resize-none"
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
                     />
                 </div>
 
                 {/* 2. Categorization */}
-                <div>
-                     <label className="text-xs text-gray-400 uppercase font-bold tracking-wider mb-2 block">Theme / Category</label>
-                     <div className="grid grid-cols-2 gap-2">
-                         <select 
-                            className="bg-gray-800 border border-gray-700 text-sm rounded-lg p-3 text-white outline-none w-full"
-                            value={category}
-                            onChange={(e) => setCategory(e.target.value as ListCategory)}
-                        >
-                            {Object.values(ListCategory).map(cat => (
-                                <option key={cat} value={cat}>{cat}</option>
-                            ))}
-                        </select>
-                         <select 
-                            className="bg-gray-800 border border-gray-700 text-sm rounded-lg p-3 text-white outline-none w-full"
-                            value={privacy}
-                            onChange={(e) => setPrivacy(e.target.value as PrivacyLevel)}
-                        >
-                            <option value={PrivacyLevel.PUBLIC}>Public</option>
-                            <option value={PrivacyLevel.FOLLOWERS}>Followers Only</option>
-                            <option value={PrivacyLevel.PRIVATE}>Private</option>
-                        </select>
-                     </div>
+                <div className="grid grid-cols-2 gap-3">
+                    <select 
+                        className="bg-gray-800 border border-gray-700 text-sm rounded-xl p-3 text-white outline-none w-full"
+                        value={category}
+                        onChange={(e) => setCategory(e.target.value as ListCategory)}
+                    >
+                        {Object.values(ListCategory).map(cat => (
+                            <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                    </select>
+                    <select 
+                        className="bg-gray-800 border border-gray-700 text-sm rounded-xl p-3 text-white outline-none w-full"
+                        value={privacy}
+                        onChange={(e) => setPrivacy(e.target.value as PrivacyLevel)}
+                    >
+                        <option value={PrivacyLevel.PUBLIC}>Public</option>
+                        <option value={PrivacyLevel.FOLLOWERS}>Followers Only</option>
+                        <option value={PrivacyLevel.PRIVATE}>Private</option>
+                    </select>
                 </div>
 
-                {/* 3. Patch / Trophy Upload */}
+                {/* 3. Patch Reward */}
                 <div>
-                    <label className="text-xs text-gray-400 uppercase font-bold tracking-wider mb-2 block">
-                        Completion Patch <span className="text-[10px] font-normal text-gray-500">(PNG Only)</span>
-                    </label>
-                    <div className="flex items-center space-x-4 bg-gray-800 p-3 rounded-xl border border-gray-700">
-                        <div className="w-16 h-16 bg-gray-900 rounded-lg flex items-center justify-center overflow-hidden border border-gray-600 border-dashed relative">
+                    <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest mb-2 block">Completion Patch</label>
+                    <div className="flex items-center space-x-4 bg-gray-800 p-4 rounded-2xl border border-gray-700">
+                        <div className="w-16 h-16 bg-gray-900 rounded-2xl flex items-center justify-center overflow-hidden border-2 border-gray-700 border-dashed relative">
                             {patchImage ? (
-                                <img src={patchImage} className="w-full h-full object-contain" />
+                                <img src={patchImage} className="w-full h-full object-contain p-1" />
                             ) : (
-                                <i className="fas fa-medal text-gray-600 text-2xl"></i>
-                            )}
-                            {patchImage && (
-                                <button onClick={() => setPatchImage('')} className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                                    <i className="fas fa-times text-white"></i>
-                                </button>
+                                <i className="fas fa-medal text-gray-700 text-2xl"></i>
                             )}
                         </div>
                         <div className="flex-1">
-                            <p className="text-sm text-gray-300 mb-2">Upload a trophy/pin for users who complete this list.</p>
                             <input 
                                 type="file" 
                                 ref={patchInputRef} 
@@ -282,166 +258,119 @@ export const CreateListScreen: React.FC<{ onSave: () => void; onCancel: () => vo
                             />
                             <button 
                                 onClick={() => patchInputRef.current?.click()}
-                                className="text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1.5 rounded-lg transition-colors"
+                                className="text-[10px] bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-full font-black uppercase tracking-widest"
                             >
-                                Upload PNG
+                                {patchImage ? 'Change PNG' : 'Upload PNG'}
                             </button>
                         </div>
                     </div>
                 </div>
 
-                {/* 4. Movie Selection */}
-                <div className="relative space-y-3 pt-4 border-t border-gray-700">
-                    <label className="text-xs text-gray-400 uppercase font-bold tracking-wider block">Content</label>
-                    
-                    <div className="flex bg-gray-800 p-1 rounded-xl border border-gray-700">
+                {/* 4. Add Content Section */}
+                <div className="pt-4 border-t border-gray-800">
+                    <div className="flex bg-gray-800 p-1.5 rounded-2xl border border-gray-700 mb-4">
                         <button 
                             onClick={() => setShowManual(false)}
-                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors ${!showManual ? 'bg-gray-700 text-white' : 'text-gray-400'}`}
+                            className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${!showManual ? 'bg-gray-700 text-white' : 'text-gray-500'}`}
                         >
-                            Search Global DB
+                            Global Search
                         </button>
                         <button 
                             onClick={() => setShowManual(true)}
-                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors ${showManual ? 'bg-gray-700 text-white' : 'text-gray-400'}`}
+                            className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${showManual ? 'bg-gray-700 text-white' : 'text-gray-500'}`}
                         >
-                            Add Custom
+                            Manual Entry
                         </button>
                     </div>
 
                     {!showManual ? (
                         <div className="relative">
-                            <i className="fas fa-search absolute left-3 top-3.5 text-gray-500"></i>
-                            <input 
-                                type="text" 
-                                placeholder="Search existing movies..." 
-                                className="w-full bg-gray-800 text-white pl-10 pr-4 py-3 rounded-xl border border-gray-700 focus:border-purple-500 focus:outline-none"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                            />
+                            <div className="relative">
+                                <i className={`fas ${isSearching ? 'fa-circle-notch fa-spin' : 'fa-search'} absolute left-4 top-4 text-gray-500`}></i>
+                                <input 
+                                    type="text" 
+                                    placeholder="Search movies or series..." 
+                                    className="w-full bg-gray-800 text-white pl-12 pr-4 py-4 rounded-2xl border border-gray-700 focus:border-purple-500 focus:outline-none transition-all"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                />
+                            </div>
+                            
+                            {/* DROPDOWN DE RESULTADOS DE BUSCA */}
                             {searchResults.length > 0 && (
-                                <div className="absolute w-full mt-2 bg-gray-800 border border-gray-600 rounded-xl shadow-2xl z-20 max-h-60 overflow-y-auto">
+                                <div className="absolute w-full mt-2 bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl z-50 max-h-72 overflow-y-auto">
                                     {searchResults.map(movie => (
                                         <div 
                                             key={movie.id} 
                                             onClick={() => handleAddMovie(movie)}
-                                            className="p-3 flex items-center space-x-3 hover:bg-gray-700 cursor-pointer border-b border-gray-700/50 last:border-0"
+                                            className="p-3 flex items-center space-x-4 hover:bg-gray-700 cursor-pointer border-b border-gray-700/30 last:border-0 transition-colors"
                                         >
-                                            <img src={movie.poster} className="w-10 h-14 object-cover rounded" />
-                                            <div>
-                                                <p className="font-bold text-sm">{movie.title}</p>
-                                                <p className="text-xs text-gray-400">{movie.year}</p>
+                                            <img src={movie.poster} className="w-10 h-14 object-cover rounded-lg shadow-md" />
+                                            <div className="flex-1 min-w-0">
+                                                <p className="font-bold text-sm text-white truncate">{movie.title}</p>
+                                                <p className="text-[10px] text-gray-500 font-black uppercase">{movie.year} • {movie.type}</p>
                                             </div>
-                                            <div className="ml-auto">
-                                                <i className="fas fa-plus-circle text-purple-500"></i>
-                                            </div>
+                                            <i className="fas fa-plus-circle text-purple-500 text-lg"></i>
                                         </div>
                                     ))}
                                 </div>
                             )}
                         </div>
                     ) : (
-                        <div className="bg-gray-800 p-3 rounded-xl border border-gray-700 space-y-3">
+                        <div className="bg-gray-800 p-4 rounded-2xl border border-gray-700 space-y-4">
                              <input 
                                 type="text" 
-                                placeholder="Movie Title" 
-                                className="w-full bg-gray-900 text-white p-2 rounded-lg border border-gray-600 text-sm focus:border-purple-500 outline-none"
+                                placeholder="Media Title" 
+                                className="w-full bg-gray-900 text-white p-3 rounded-xl border border-gray-700 text-sm outline-none"
                                 value={customTitle}
                                 onChange={(e) => setCustomTitle(e.target.value)}
                             />
                              <div className="flex space-x-2">
-                                <div className="flex-1 relative">
-                                    <input 
-                                        type="text" 
-                                        placeholder="Poster URL" 
-                                        className="w-full bg-gray-900 text-white p-2 rounded-lg border border-gray-600 text-sm"
-                                        value={customPoster.length > 50 ? 'Image Uploaded' : customPoster}
-                                        readOnly={customPoster.startsWith('data:')}
-                                        onChange={(e) => setCustomPoster(e.target.value)}
-                                    />
-                                </div>
-                                <input 
-                                    type="file" 
-                                    ref={posterInputRef}
-                                    className="hidden"
-                                    accept="image/*"
-                                    onChange={handlePosterUpload}
-                                />
-                                <button onClick={() => posterInputRef.current?.click()} className="bg-gray-700 px-3 rounded-lg border border-gray-600 text-gray-300">
-                                    <i className="fas fa-upload"></i>
+                                <button onClick={() => posterInputRef.current?.click()} className="bg-gray-700 px-4 rounded-xl border border-gray-600 text-gray-300 active:scale-95 transition-transform flex items-center justify-center">
+                                    <i className="fas fa-upload mr-2"></i> Poster
                                 </button>
+                                <input type="file" ref={posterInputRef} className="hidden" accept="image/*" onChange={handlePosterUpload} />
                                 <input 
                                     type="number" 
                                     placeholder="Year" 
-                                    className="w-20 bg-gray-900 text-white p-2 rounded-lg border border-gray-600 text-sm"
+                                    className="w-24 bg-gray-900 text-white p-3 rounded-xl border border-gray-700 text-sm"
                                     value={customYear}
                                     onChange={(e) => setCustomYear(e.target.value)}
                                 />
                             </div>
-
-                            {/* Streaming Options */}
-                            <div>
-                                <label className="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-2 block">Available On</label>
-                                <div className="flex flex-wrap gap-2">
-                                    {STREAMING_SERVICES.map(service => (
-                                        <button
-                                            key={service.id}
-                                            onClick={() => toggleStreaming(service.id)}
-                                            className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
-                                                customStreamings.includes(service.id)
-                                                    ? `${service.color} border-transparent text-white`
-                                                    : 'bg-transparent border-gray-600 text-gray-400 hover:border-gray-400'
-                                            }`}
-                                        >
-                                            {service.label}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                             <button 
+                            <button 
                                 onClick={handleAddCustomMovie}
                                 disabled={!customTitle}
-                                className="w-full mt-2 bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold py-3 rounded-lg transition-colors disabled:opacity-50"
+                                className="w-full bg-purple-600 text-white text-[10px] font-black uppercase tracking-widest py-3 rounded-xl transition-all disabled:opacity-50"
                             >
-                                Add Custom Movie
+                                Add Manual Item
                             </button>
                         </div>
                     )}
                 </div>
 
                 {/* Selected Movies List */}
-                <div className="space-y-3 pt-2">
+                <div className="space-y-3 mt-6">
+                    <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest block">Collection Items ({selectedMovies.length})</label>
                     {selectedMovies.map((movie) => (
-                        <div key={movie.id} className="flex items-center bg-gray-800/50 p-2 rounded-lg border border-gray-700 animate-fade-in">
-                            <img src={movie.poster} className="w-12 h-16 rounded object-cover" />
-                            <div className="ml-3 flex-1">
-                                <h4 className="font-medium text-sm">{movie.title}</h4>
-                                <div className="flex items-center space-x-2 mt-1">
-                                     <span className="text-xs text-gray-400">{movie.year}</span>
-                                     {movie.availableOn && movie.availableOn.length > 0 && (
-                                         <div className="flex -space-x-1">
-                                            {movie.availableOn.slice(0, 3).map(sid => {
-                                                const s = STREAMING_SERVICES.find(serv => serv.id === sid);
-                                                return s ? (
-                                                    <div key={sid} className={`w-3 h-3 rounded-full ${s.color} border border-gray-800`} title={s.label}></div>
-                                                ) : null;
-                                            })}
-                                         </div>
-                                     )}
-                                </div>
+                        <div key={movie.id} className="flex items-center bg-gray-800/40 p-3 rounded-2xl border border-gray-800 animate-fade-in group">
+                            <img src={movie.poster} className="w-12 h-16 rounded-lg object-cover shadow-lg" />
+                            <div className="ml-4 flex-1 min-w-0">
+                                <h4 className="font-bold text-sm text-white truncate">{movie.title}</h4>
+                                <p className="text-[10px] text-gray-500 font-bold">{movie.year}</p>
                             </div>
                             <button 
                                 onClick={() => handleRemoveMovie(movie.id)}
-                                className="p-2 text-gray-500 hover:text-red-500 transition-colors"
+                                className="p-3 text-gray-600 hover:text-red-500 transition-colors"
                             >
-                                <i className="fas fa-trash"></i>
+                                <i className="fas fa-trash-alt text-xs"></i>
                             </button>
                         </div>
                     ))}
                     {selectedMovies.length === 0 && (
-                        <div className="text-center py-8 text-gray-500 border-2 border-dashed border-gray-700 rounded-xl">
-                            <p className="text-sm">No movies added yet.</p>
+                        <div className="text-center py-12 text-gray-600 border-2 border-dashed border-gray-800 rounded-3xl">
+                            <i className="fas fa-film text-3xl mb-3 opacity-20"></i>
+                            <p className="text-xs uppercase font-black tracking-widest">No items added yet</p>
                         </div>
                     )}
                 </div>

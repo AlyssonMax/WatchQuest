@@ -1,531 +1,403 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../services/db';
-import { Report, User, UserRole } from '../types';
+import { User, Report, Badge, BadgeType } from '../types';
 import { processPatchImage } from '../services/imageUtils';
 
-export const AdminScreen: React.FC<{ onBack: () => void }> = ({ onBack }) => {
-    const [tab, setTab] = useState<'overview' | 'users' | 'reports' | 'badges'>('overview');
-    const [currentUser, setCurrentUser] = useState<User | null>(null);
+interface AdminScreenProps {
+    onBack: () => void;
+    onNavigateToPost?: (id: string) => void;
+}
+
+export const AdminScreen: React.FC<AdminScreenProps> = ({ onBack, onNavigateToPost }) => {
+    const [tab, setTab] = useState<'stats' | 'users' | 'reports' | 'badges' | 'audit'>('stats');
+    const [selectedUser, setSelectedUser] = useState<User | null>(null);
+    const [users, setUsers] = useState<User[]>([]);
+    const [reports, setReports] = useState<Report[]>([]);
+    const [globalBadges, setGlobalBadges] = useState<Badge[]>([]);
+    const [stats, setStats] = useState<any>(null);
 
     useEffect(() => {
-        db.getCurrentUser().then(setCurrentUser);
+        loadData();
     }, []);
 
+    const loadData = async () => {
+        const u = await db.getAllUsers();
+        const r = await db.getReports();
+        const s = await db.getDashboardStats();
+        const b = await db.getGlobalBadges();
+        setUsers(u);
+        setReports(r);
+        setStats(s);
+        setGlobalBadges(b);
+    };
+
+    const handleSelectUserById = async (id: string) => {
+        const user = await db.getUserById(id);
+        if (user) {
+            setSelectedUser(user);
+            setTab('users');
+        }
+    };
+
     return (
-        <div className="h-full flex flex-col bg-gray-900">
+        <div className="h-full flex flex-col bg-gray-950 font-sans">
             {/* Admin Header */}
-            <div className="p-4 bg-gray-800/90 backdrop-blur-md border-b border-gray-700 flex items-center justify-between shadow-lg sticky top-0 z-20">
-                <div className="flex items-center">
-                    <button onClick={onBack} className="mr-4 text-gray-400 hover:text-white transition-colors">
-                        <i className="fas fa-arrow-left text-xl"></i>
+            <div className="p-4 border-b border-gray-800 bg-gray-900 flex items-center justify-between sticky top-0 z-50">
+                <div className="flex items-center space-x-3">
+                    <button onClick={selectedUser ? () => setSelectedUser(null) : onBack} className="text-gray-400 hover:text-white transition-colors">
+                        <i className="fas fa-arrow-left"></i>
                     </button>
                     <div>
-                        <h2 className="text-xl font-bold text-red-500 tracking-tight flex items-center">
-                            <i className="fas fa-user-shield mr-2"></i> Admin
-                        </h2>
-                        <p className="text-[10px] text-gray-400 font-mono">SYSTEM CONTROL</p>
+                        <h1 className="text-sm font-black text-red-500 uppercase tracking-tighter">Command Unit</h1>
+                        {selectedUser && <p className="text-[9px] text-gray-500 font-mono">MODERATING: {selectedUser.handle}</p>}
                     </div>
                 </div>
-                <div className="flex bg-gray-900 rounded-lg p-1 border border-gray-700">
-                    <TabButton icon="fa-chart-pie" active={tab === 'overview'} onClick={() => setTab('overview')} />
-                    <TabButton icon="fa-users" active={tab === 'users'} onClick={() => setTab('users')} />
-                    <TabButton icon="fa-flag" active={tab === 'reports'} onClick={() => setTab('reports')} />
-                    <TabButton icon="fa-award" active={tab === 'badges'} onClick={() => setTab('badges')} />
+                <div className="flex bg-black rounded-lg p-1 border border-gray-800">
+                    <TabIcon active={tab === 'stats'} icon="fa-chart-pie" onClick={() => { setTab('stats'); setSelectedUser(null); }} />
+                    <TabIcon active={tab === 'users'} icon="fa-users-cog" onClick={() => { setTab('users'); setSelectedUser(null); }} />
+                    <TabIcon active={tab === 'badges'} icon="fa-award" onClick={() => { setTab('badges'); setSelectedUser(null); }} />
+                    <TabIcon active={tab === 'reports'} icon="fa-flag" onClick={() => { setTab('reports'); setSelectedUser(null); }} />
+                    <TabIcon active={tab === 'audit'} icon="fa-history" onClick={() => { setTab('audit'); setSelectedUser(null); }} />
                 </div>
             </div>
 
-            {/* Content Area */}
-            <div className="flex-1 overflow-y-auto">
-                {tab === 'overview' && <OverviewTab />}
-                {tab === 'users' && <UsersTab currentUser={currentUser} />}
-                {tab === 'reports' && <ReportsTab />}
-                {tab === 'badges' && <BadgesTab />}
-            </div>
-        </div>
-    );
-};
-
-// --- SUB-COMPONENTS (TABS) ---
-
-// 0. OVERVIEW TAB (NEW)
-const OverviewTab: React.FC = () => {
-    const [stats, setStats] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        const load = async () => {
-            try {
-                const data = await db.getDashboardStats();
-                setStats(data);
-            } catch (e) {
-                console.error(e);
-            } finally {
-                setLoading(false);
-            }
-        };
-        load();
-    }, []);
-
-    if (loading) return <div className="text-center py-10 text-gray-500">Loading metrics...</div>;
-    if (!stats) return null;
-
-    // Calculate percentages for bars
-    const userPercent = (stats.usersByRole.user / stats.totalUsers) * 100;
-    const adminPercent = (stats.usersByRole.admin / stats.totalUsers) * 100;
-
-    return (
-        <div className="p-4 space-y-6 animate-fade-in">
-            {/* Key Metrics Grid */}
-            <div className="grid grid-cols-2 gap-4">
-                <MetricCard label="Total Users" value={stats.totalUsers} icon="fa-users" color="text-blue-400" />
-                <MetricCard label="Total Lists" value={stats.totalLists} icon="fa-list" color="text-purple-400" />
-                <MetricCard label="Reactions" value={stats.totalReactions} icon="fa-heart" color="text-pink-400" />
-                <MetricCard label="Comments" value={stats.totalComments} icon="fa-comment" color="text-green-400" />
-            </div>
-
-            {/* User Distribution Chart */}
-            <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
-                <h3 className="text-sm font-bold text-gray-300 mb-4">User Roles Distribution</h3>
-                <div className="space-y-4">
-                    <div>
-                        <div className="flex justify-between text-xs text-gray-400 mb-1">
-                            <span>Regular Users</span>
-                            <span>{stats.usersByRole.user}</span>
-                        </div>
-                        <div className="w-full h-2 bg-gray-900 rounded-full overflow-hidden">
-                            <div className="h-full bg-blue-500 rounded-full" style={{ width: `${userPercent}%` }}></div>
-                        </div>
-                    </div>
-                    <div>
-                        <div className="flex justify-between text-xs text-gray-400 mb-1">
-                            <span>Admins</span>
-                            <span>{stats.usersByRole.admin}</span>
-                        </div>
-                        <div className="w-full h-2 bg-gray-900 rounded-full overflow-hidden">
-                            <div className="h-full bg-red-500 rounded-full" style={{ width: `${adminPercent}%` }}></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Health Check */}
-            <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 flex items-center justify-between">
-                <div>
-                    <h3 className="text-sm font-bold text-gray-300">System Health</h3>
-                    <p className="text-xs text-gray-500">Pending reports: <span className="text-white font-bold">{stats.totalReports}</span></p>
-                </div>
-                <div className={`w-3 h-3 rounded-full ${stats.totalReports > 0 ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
-            </div>
-        </div>
-    );
-};
-
-const MetricCard: React.FC<{ label: string, value: number, icon: string, color: string }> = ({ label, value, icon, color }) => (
-    <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 flex flex-col items-center justify-center">
-        <i className={`fas ${icon} text-2xl ${color} mb-2`}></i>
-        <span className="text-2xl font-bold text-white">{value}</span>
-        <span className="text-[10px] text-gray-400 uppercase tracking-wider">{label}</span>
-    </div>
-);
-
-// 1. USERS TAB
-const UsersTab: React.FC<{ currentUser: User | null }> = ({ currentUser }) => {
-    const [users, setUsers] = useState<User[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [selectedUser, setSelectedUser] = useState<User | null>(null); // For Detail Modal
-
-    useEffect(() => {
-        loadUsers();
-    }, []);
-
-    const loadUsers = async () => {
-        try {
-            const data = await db.getAllUsers();
-            setUsers(data);
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleDelete = async (userId: string) => {
-        // Double confirmation for safety
-        if (!confirm("⚠️ WARNING: This action is irreversible.\n\nAre you sure you want to DELETE this user and ALL their data?")) return;
-        
-        try {
-            await db.adminDeleteUser(userId);
-            
-            // Remove from list
-            setUsers(prev => prev.filter(u => u.id !== userId));
-            
-            // Close modal if deleting the selected user
-            if (selectedUser?.id === userId) setSelectedUser(null);
-            
-            alert("✅ User successfully deleted.");
-        } catch (e: any) {
-            alert(`Error: ${e.message}`);
-        }
-    };
-
-    const handleResetPassword = async (userId: string) => {
-        if (!confirm("Are you sure you want to reset this user's password?")) return;
-        try {
-            const tempPass = await db.adminResetPassword(userId);
-            
-            // Try to copy to clipboard
-            try {
-                await navigator.clipboard.writeText(tempPass);
-                alert(`Password Reset Successfully!\n\nTemporary Password: ${tempPass}\n\n(Copied to clipboard)`);
-            } catch {
-                 alert(`Password Reset Successfully!\n\nTemporary Password: ${tempPass}\n\nPlease write this down.`);
-            }
-
-        } catch (e: any) {
-            alert(e.message);
-        }
-    };
-
-    const handleRoleChange = async (userId: string, currentRole: UserRole) => {
-        const newRole = currentRole === UserRole.ADMIN ? UserRole.USER : UserRole.ADMIN;
-        if (!confirm(`Change role to ${newRole}?`)) return;
-        try {
-            await db.adminUpdateRole(userId, newRole);
-            
-            // Update List
-            setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
-            
-            // Update Modal
-            if (selectedUser?.id === userId) {
-                setSelectedUser(prev => prev ? { ...prev, role: newRole } : null);
-            }
-        } catch (e: any) {
-            alert(e.message);
-        }
-    };
-
-    const filteredUsers = users.filter(u => 
-        u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        u.handle.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        u.email.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
-    return (
-        <div className="p-4 space-y-4">
-            {/* Search */}
-            <div className="relative">
-                <i className="fas fa-search absolute left-3 top-3.5 text-gray-500"></i>
-                <input 
-                    type="text" 
-                    placeholder="Search users by name, handle, email..." 
-                    className="w-full bg-gray-800 text-white pl-10 pr-4 py-3 rounded-xl border border-gray-700 focus:border-red-500 focus:outline-none"
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                />
-            </div>
-
-            {loading ? (
-                <div className="text-center text-gray-500 py-10">Loading users...</div>
-            ) : (
-                <div className="space-y-2">
-                    <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-2">Total Users: {users.length}</p>
-                    {filteredUsers.map(user => (
-                        <div key={user.id} className="bg-gray-800 rounded-xl p-3 border border-gray-700 flex items-center justify-between group hover:border-gray-500 transition-colors">
-                            <div className="flex items-center space-x-3 overflow-hidden" onClick={() => setSelectedUser(user)}>
-                                <img src={user.avatar} className="w-10 h-10 rounded-full object-cover border border-gray-600" />
-                                <div className="min-w-0">
-                                    <div className="flex items-center">
-                                        <p className="font-bold text-sm text-white truncate mr-2">{user.name}</p>
-                                        {user.role === UserRole.ADMIN && (
-                                            <span className="bg-red-500 text-white text-[9px] px-1.5 rounded font-bold">ADMIN</span>
-                                        )}
-                                    </div>
-                                    <p className="text-xs text-gray-400 truncate">{user.handle}</p>
-                                </div>
+            <div className="flex-1 overflow-y-auto pb-20">
+                {selectedUser ? (
+                    <UserDetailView 
+                        user={selectedUser} 
+                        onBack={() => { setSelectedUser(null); loadData(); }} 
+                        badges={globalBadges}
+                    />
+                ) : (
+                    <>
+                        {tab === 'stats' && stats && (
+                            <div className="p-4 grid grid-cols-2 gap-4 animate-fade-in">
+                                <StatCard label="Total Operatives" value={stats.totalUsers} color="text-blue-500" icon="fa-users" />
+                                <StatCard label="Quarantined" value={stats.bannedUsers} color="text-red-500" icon="fa-user-slash" />
+                                <StatCard label="Active Warnings" value={stats.activeWarnings} color="text-yellow-500" icon="fa-gavel" />
+                                <StatCard label="Open Reports" value={stats.pendingReports} color="text-purple-500" icon="fa-flag" />
                             </div>
-                            
-                            <div className="flex items-center space-x-2">
-                                <button 
-                                    onClick={() => setSelectedUser(user)}
-                                    className="w-8 h-8 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 flex items-center justify-center"
-                                    title="View Details"
-                                >
-                                    <i className="fas fa-eye"></i>
-                                </button>
-                                {user.id !== currentUser?.id && (
-                                    <>
-                                        <button 
-                                            onClick={() => handleResetPassword(user.id)}
-                                            className="w-8 h-8 rounded-lg bg-blue-900/50 hover:bg-blue-800 text-blue-400 flex items-center justify-center border border-blue-900"
-                                            title="Reset Password"
-                                        >
-                                            <i className="fas fa-key"></i>
-                                        </button>
-                                        <button 
-                                            onClick={() => handleDelete(user.id)}
-                                            className="w-8 h-8 rounded-lg bg-red-900/50 hover:bg-red-800 text-red-400 flex items-center justify-center border border-red-900"
-                                            title="Delete User"
-                                        >
-                                            <i className="fas fa-trash"></i>
-                                        </button>
-                                    </>
+                        )}
+
+                        {tab === 'users' && (
+                            <div className="p-2 space-y-2">
+                                <div className="px-2 pb-2">
+                                    <input 
+                                        type="text" 
+                                        placeholder="Search by handle or email..." 
+                                        className="w-full bg-gray-900 border border-gray-800 rounded-xl p-3 text-xs outline-none focus:border-red-500/50"
+                                    />
+                                </div>
+                                {users.map(user => (
+                                    <UserAdminCard key={user.id} user={user} onSelect={() => setSelectedUser(user)} />
+                                ))}
+                            </div>
+                        )}
+
+                        {tab === 'badges' && (
+                            <BadgeManagementView badges={globalBadges} onRefresh={loadData} />
+                        )}
+
+                        {tab === 'reports' && (
+                            <div className="p-2 space-y-3">
+                                {reports.length === 0 ? (
+                                    <div className="text-center py-20 text-gray-700 italic text-xs">No active alerts. All clear.</div>
+                                ) : (
+                                    reports.sort((a,b) => b.timestamp - a.timestamp).map(report => (
+                                        <ReportCard 
+                                            key={report.id} 
+                                            report={report} 
+                                            onRefresh={loadData} 
+                                            onNavigateToPost={onNavigateToPost}
+                                            onSelectUser={handleSelectUserById}
+                                        />
+                                    ))
                                 )}
                             </div>
+                        )}
+
+                        {tab === 'audit' && <AuditList onSelectUser={handleSelectUserById} />}
+                    </>
+                )}
+            </div>
+        </div>
+    );
+};
+
+const BadgeManagementView: React.FC<{ badges: Badge[], onRefresh: () => void }> = ({ badges, onRefresh }) => {
+    const [name, setName] = useState('');
+    const [desc, setDesc] = useState('');
+    const [icon, setIcon] = useState('');
+    const fileRef = useRef<HTMLInputElement>(null);
+
+    const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const base64 = await processPatchImage(file);
+            setIcon(base64);
+        }
+    };
+
+    const handleCreate = async () => {
+        if (!name || !desc || !icon) return;
+        await db.createGlobalBadge(name, desc, icon);
+        setName(''); setDesc(''); setIcon('');
+        onRefresh();
+    };
+
+    return (
+        <div className="p-4 space-y-6">
+            <div className="bg-gray-900 border border-gray-800 p-4 rounded-2xl space-y-3">
+                <h3 className="text-xs font-black uppercase text-red-500">Create Official Achievement</h3>
+                <input type="text" placeholder="Achievement Name" className="w-full bg-black border border-gray-800 rounded-xl p-3 text-xs outline-none focus:border-red-500" value={name} onChange={e => setName(e.target.value)} />
+                <textarea placeholder="Description of how to earn" className="w-full bg-black border border-gray-800 rounded-xl p-3 text-xs outline-none focus:border-red-500 h-20" value={desc} onChange={e => setDesc(e.target.value)} />
+                <div className="flex items-center space-x-3">
+                    <div className="w-12 h-12 bg-black rounded-lg border border-gray-800 flex items-center justify-center overflow-hidden">
+                        {icon ? <img src={icon} className="w-full h-full object-contain" /> : <i className="fas fa-medal text-gray-700"></i>}
+                    </div>
+                    <button onClick={() => fileRef.current?.click()} className="flex-1 bg-gray-800 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest">Select Icon (PNG)</button>
+                    <input type="file" ref={fileRef} className="hidden" accept="image/png" onChange={handleUpload} />
+                </div>
+                <button onClick={handleCreate} className="w-full bg-red-600 py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-red-900/20">Forge Badge</button>
+            </div>
+
+            <div className="space-y-3">
+                <h3 className="text-xs font-black uppercase text-gray-500">Global Armory</h3>
+                {badges.map(b => (
+                    <div key={b.id} className="bg-gray-900 border border-gray-800 p-3 rounded-xl flex items-center space-x-3">
+                        <div className="w-10 h-10 flex-shrink-0">
+                            {b.icon.startsWith('fa-') ? <div className="w-full h-full bg-gray-800 rounded flex items-center justify-center"><i className={`fas ${b.icon} text-yellow-500`}></i></div> : <img src={b.icon} className="w-full h-full object-contain" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold truncate">{b.name}</p>
+                            <p className="text-[10px] text-gray-500 truncate">{b.description}</p>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+const UserDetailView: React.FC<{ user: User, onBack: () => void, badges: Badge[] }> = ({ user, onBack, badges }) => {
+    const handleStrike = async () => {
+        const reason = prompt(`Specify the violation for ${user.handle}:`);
+        if (reason) {
+            await db.issueStrike(user.id, reason);
+            alert("Strike logged. System recalculated.");
+            onBack();
+        }
+    };
+
+    const handleBan = async () => {
+        const reason = prompt(`Enter definitive reason for PERMANENT BAN of ${user.email}:`);
+        if (reason && confirm("THIS ACTION IS IRREVERSIBLE. Blacklist this operative?")) {
+            await db.banUser(user.id, reason);
+            onBack();
+        }
+    };
+
+    const handleGrantBadge = async (badgeId: string) => {
+        if (confirm("Award this achievement manually to the subject?")) {
+            await db.grantBadgeToUser(user.id, badgeId);
+            alert("Honor bestowed.");
+        }
+    };
+
+    return (
+        <div className="p-4 space-y-6 animate-fade-in-up">
+            {/* Profile Header */}
+            <div className="bg-gray-900 rounded-2xl p-6 border border-gray-800 text-center">
+                <img src={user.avatar} className="w-24 h-24 rounded-full mx-auto border-4 border-gray-800 mb-4 shadow-xl" />
+                <h2 className="text-xl font-black">{user.name}</h2>
+                <p className="text-red-500 font-mono text-xs">{user.handle}</p>
+                
+                <div className="mt-6 flex justify-center space-x-3">
+                    <button onClick={handleStrike} className="flex-1 bg-yellow-600/10 text-yellow-500 border border-yellow-600/30 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest">
+                        <i className="fas fa-gavel mr-2"></i> Issue Strike
+                    </button>
+                    <button onClick={handleBan} className="flex-1 bg-red-600/10 text-red-500 border border-red-600/30 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest">
+                        <i className="fas fa-user-slash mr-2"></i> Permanent Ban
+                    </button>
+                </div>
+            </div>
+
+            {/* Manual Achievements Grant */}
+            <div className="bg-gray-900 rounded-2xl p-5 border border-gray-800">
+                <h3 className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-4">Manual Distinction</h3>
+                <div className="space-y-2">
+                    {badges.map(b => (
+                        <div key={b.id} className="flex items-center justify-between bg-black/30 p-2 rounded-lg">
+                            <span className="text-xs font-bold">{b.name}</span>
+                            <button 
+                                onClick={() => handleGrantBadge(b.id)}
+                                disabled={user.badges.some(ub => ub.id === b.id)}
+                                className={`text-[9px] px-3 py-1 rounded-md uppercase font-black ${user.badges.some(ub => ub.id === b.id) ? 'bg-gray-800 text-gray-600 cursor-not-allowed' : 'bg-blue-600 text-white'}`}
+                            >
+                                {user.badges.some(ub => ub.id === b.id) ? 'Already Won' : 'Grant Badge'}
+                            </button>
                         </div>
                     ))}
                 </div>
-            )}
+            </div>
 
-            {/* User Detail Modal */}
-            {selectedUser && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-gray-900 rounded-2xl border border-gray-700 w-full max-w-sm overflow-hidden shadow-2xl">
-                        <div className="h-24 bg-gray-800 relative">
-                            {selectedUser.coverImage && <img src={selectedUser.coverImage} className="w-full h-full object-cover opacity-50" />}
-                            <button onClick={() => setSelectedUser(null)} className="absolute top-2 right-2 w-8 h-8 bg-black/50 rounded-full text-white flex items-center justify-center">
-                                <i className="fas fa-times"></i>
-                            </button>
-                        </div>
-                        <div className="px-6 pb-6 relative">
-                            <img src={selectedUser.avatar} className="w-20 h-20 rounded-full border-4 border-gray-900 absolute -top-10 shadow-lg bg-gray-800" />
-                            <div className="mt-12">
-                                <h3 className="text-xl font-bold">{selectedUser.name}</h3>
-                                <p className="text-sm text-gray-400 mb-4">{selectedUser.handle} • {selectedUser.email}</p>
-                                
-                                <div className="grid grid-cols-2 gap-4 mb-4 text-center">
-                                    <div className="bg-gray-800 p-2 rounded-lg">
-                                        <span className="block font-bold text-lg">{selectedUser.followers}</span>
-                                        <span className="text-[10px] text-gray-500 uppercase">Followers</span>
-                                    </div>
-                                    <div className="bg-gray-800 p-2 rounded-lg">
-                                        <span className="block font-bold text-lg">{selectedUser.badges.length}</span>
-                                        <span className="text-[10px] text-gray-500 uppercase">Badges</span>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2 border-t border-gray-800 pt-4">
-                                     <div className="flex justify-between items-center text-sm">
-                                         <span className="text-gray-500">Role</span>
-                                         <span className={`font-bold ${selectedUser.role === UserRole.ADMIN ? 'text-red-500' : 'text-gray-300'}`}>{selectedUser.role}</span>
-                                     </div>
-                                     <div className="flex justify-between items-center text-sm">
-                                         <span className="text-gray-500">Joined</span>
-                                         <span className="text-gray-300">{new Date(selectedUser.joinedAt).toLocaleDateString()}</span>
-                                     </div>
-                                     <div className="flex justify-between items-center text-sm">
-                                         <span className="text-gray-500">User ID</span>
-                                         <span className="text-gray-500 text-xs font-mono">{selectedUser.id}</span>
-                                     </div>
-                                </div>
-
-                                {currentUser?.id !== selectedUser.id && (
-                                    <div className="mt-6 flex flex-col space-y-2">
-                                        <button 
-                                            onClick={() => handleRoleChange(selectedUser.id, selectedUser.role)}
-                                            className="w-full py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs font-bold text-gray-300 transition-colors border border-gray-700"
-                                        >
-                                            {selectedUser.role === UserRole.ADMIN ? 'Demote to User' : 'Promote to Admin'}
-                                        </button>
-                                        <button 
-                                            onClick={() => handleDelete(selectedUser.id)}
-                                            className="w-full py-2 bg-red-900/50 hover:bg-red-900/80 rounded-lg text-xs font-bold text-red-300 transition-colors border border-red-900"
-                                        >
-                                            Delete Account Permanently
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
+            {/* Warnings Status */}
+            <div className="bg-gray-900 rounded-2xl p-5 border border-gray-800">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Strike Tracker</h3>
+                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${user.isPermanentlyBanned ? 'bg-red-900 text-red-400' : 'bg-green-900 text-green-400'}`}>
+                        {user.isPermanentlyBanned ? 'TERMINATED' : 'ACTIVE'}
+                    </span>
                 </div>
-            )}
-        </div>
-    );
-};
-
-// 2. REPORTS TAB
-const ReportsTab: React.FC = () => {
-    const [reports, setReports] = useState<Report[]>([]);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        const load = async () => {
-            const data = await db.getReports();
-            setReports(data);
-            setLoading(false);
-        };
-        load();
-    }, []);
-
-    const handleResolve = async (id: string) => {
-        await db.resolveReport(id);
-        setReports(prev => prev.map(r => r.id === id ? {...r, status: 'resolved'} : r));
-    };
-
-    return (
-        <div className="p-4 space-y-3">
-             {loading ? (
-                <div className="text-center text-gray-500 py-10">Loading reports...</div>
-            ) : reports.length === 0 ? (
-                <div className="text-center text-gray-500 py-10">
-                    <i className="fas fa-check-circle text-4xl mb-3 text-green-500/50"></i>
-                    <p>No reports found.</p>
-                </div>
-            ) : (
-                reports.map(report => (
-                    <div key={report.id} className={`bg-gray-800 p-4 rounded-xl border ${report.status === 'pending' ? 'border-red-500/30' : 'border-green-500/30'} relative`}>
-                        <div className="flex justify-between items-start mb-2">
-                            <span className="bg-gray-900 text-gray-300 text-[10px] uppercase font-bold px-2 py-1 rounded border border-gray-700">
-                                {report.targetType}
-                            </span>
-                            <span className="text-xs text-gray-500">{new Date(report.timestamp).toLocaleDateString()}</span>
-                        </div>
-                        <h4 className="font-bold text-sm text-gray-200">{report.reason}</h4>
-                        <p className="text-xs text-gray-400 mt-1 italic mb-3">"{report.details}"</p>
-                        
-                        <div className="flex justify-between items-center border-t border-gray-700 pt-3">
-                             <span className="text-xs text-gray-500 font-mono">ID: {report.targetId}</span>
-                             {report.status === 'pending' ? (
-                                 <button onClick={() => handleResolve(report.id)} className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-500">
-                                     Mark Resolved
-                                 </button>
-                             ) : (
-                                 <span className="text-xs text-green-500 font-bold"><i className="fas fa-check mr-1"></i> Resolved</span>
-                             )}
-                        </div>
-                    </div>
-                ))
-            )}
-        </div>
-    );
-};
-
-// 3. BADGES TAB
-const BadgesTab: React.FC = () => {
-    const [name, setName] = useState('');
-    const [desc, setDesc] = useState('');
-    const [iconClass, setIconClass] = useState('fa-trophy'); 
-    const [customImage, setCustomImage] = useState('');
-    const [message, setMessage] = useState('');
-    const fileRef = useRef<HTMLInputElement>(null);
-
-    const handleCreateBadge = async () => {
-        try {
-            // Priority: Custom Image > Selected Icon
-            const finalIcon = customImage || iconClass;
-            await db.createAdminBadge(name, desc, finalIcon);
-            setMessage(`Badge "${name}" created successfully!`);
-            setName('');
-            setDesc('');
-            setCustomImage('');
-        } catch (e: any) {
-            setMessage(`Error: ${e.message}`);
-        }
-    };
-
-    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        try {
-            const base64 = await processPatchImage(file);
-            setCustomImage(base64);
-        } catch(e: any) {
-            alert(e.message);
-        }
-    };
-    
-    // Expanded Icon Selection
-    const icons = [
-        'fa-trophy', 'fa-star', 'fa-medal', 'fa-crown', 'fa-film', 'fa-video', 
-        'fa-check-double', 'fa-fire', 'fa-bolt', 'fa-heart', 'fa-gem', 
-        'fa-award', 'fa-shield-alt', 'fa-rocket', 'fa-ghost', 'fa-dragon'
-    ];
-
-    return (
-        <div className="p-4 space-y-4">
-             <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 space-y-4">
-                <h3 className="text-lg font-bold text-white mb-2">Create Global Badge</h3>
-                <p className="text-xs text-gray-400">These badges are system-wide achievements.</p>
                 
-                <input 
-                    type="text" 
-                    placeholder="Badge Name"
-                    className="w-full bg-gray-900 border border-gray-600 rounded-lg p-3 text-white focus:border-red-500 outline-none"
-                    value={name}
-                    onChange={e => setName(e.target.value)}
-                />
-                
-                <input 
-                    type="text" 
-                    placeholder="Description"
-                    className="w-full bg-gray-900 border border-gray-600 rounded-lg p-3 text-white focus:border-red-500 outline-none"
-                    value={desc}
-                    onChange={e => setDesc(e.target.value)}
-                />
-
                 <div className="space-y-3">
-                    <label className="text-xs text-gray-500 font-bold uppercase block">Badge Visual</label>
-                    
-                    {/* Custom Image Upload */}
-                    <div className="flex items-center space-x-3 bg-gray-900 p-3 rounded-lg border border-gray-700">
+                    <div className="flex items-center justify-between text-[11px] mb-1">
+                        <span className="text-gray-400">Warning Level</span>
+                        <span className="text-white font-bold">{user.strikes.length} / 3</span>
+                    </div>
+                    <div className="w-full bg-gray-800 h-2 rounded-full overflow-hidden">
                         <div 
-                            onClick={() => fileRef.current?.click()}
-                            className="w-12 h-12 rounded-lg bg-gray-800 border-2 border-dashed border-gray-600 flex items-center justify-center cursor-pointer hover:border-red-500 overflow-hidden relative"
-                        >
-                            {customImage ? (
-                                <img src={customImage} className="w-full h-full object-contain" />
-                            ) : (
-                                <i className="fas fa-upload text-gray-500"></i>
-                            )}
-                        </div>
-                        <div>
-                            <p className="text-xs text-gray-400">Upload PNG (Transparent)</p>
-                            <button onClick={() => setCustomImage('')} className="text-[10px] text-red-500 underline">Clear Image</button>
-                        </div>
-                        <input type="file" ref={fileRef} className="hidden" accept="image/png" onChange={handleImageUpload} />
-                    </div>
-
-                    <div className="flex items-center space-x-2 text-xs text-gray-500">
-                        <span className="h-px bg-gray-700 flex-1"></span>
-                        <span>OR SELECT ICON</span>
-                        <span className="h-px bg-gray-700 flex-1"></span>
-                    </div>
-
-                    {/* Icon Grid */}
-                    <div className={`grid grid-cols-6 gap-2 ${customImage ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
-                        {icons.map(icon => (
-                            <button 
-                                key={icon}
-                                onClick={() => setIconClass(icon)}
-                                className={`w-10 h-10 rounded-lg flex items-center justify-center border transition-all ${iconClass === icon ? 'bg-red-500 text-white border-red-500 scale-110' : 'bg-gray-900 border-gray-600 text-gray-400'}`}
-                            >
-                                <i className={`fas ${icon}`}></i>
-                            </button>
-                        ))}
+                            className={`h-full transition-all duration-700 ${user.strikes.length >= 2 ? 'bg-red-600' : 'bg-yellow-500'}`} 
+                            style={{ width: `${(user.strikes.length / 3) * 100}%` }}
+                        ></div>
                     </div>
                 </div>
-
-                {message && <div className="p-3 bg-gray-900 rounded border border-gray-600 text-sm text-green-400">{message}</div>}
-
-                <button 
-                    onClick={handleCreateBadge}
-                    disabled={!name || !desc}
-                    className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl transition-colors disabled:opacity-50"
-                >
-                    Create Badge
-                </button>
             </div>
         </div>
     );
-}
+};
 
-// Utility Components
-const TabButton: React.FC<{ icon: string, active: boolean, onClick: () => void }> = ({ icon, active, onClick }) => (
-    <button 
-        onClick={onClick}
-        className={`w-10 h-8 rounded-md flex items-center justify-center transition-all ${active ? 'bg-gray-700 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
-    >
-        <i className={`fas ${icon}`}></i>
+const UserAdminCard: React.FC<{ user: User, onSelect: () => void }> = ({ user, onSelect }) => (
+    <div className="bg-gray-900 border border-gray-800 p-3 rounded-xl flex items-center justify-between hover:border-gray-600 cursor-pointer transition-all active:scale-[0.98]" onClick={onSelect}>
+        <div className="flex items-center space-x-3">
+            <img src={user.avatar} className="w-10 h-10 rounded-full grayscale border border-gray-800" />
+            <div>
+                <p className="text-xs font-bold">{user.name}</p>
+                <p className="text-[10px] text-gray-500 font-mono">{user.handle}</p>
+                <div className="flex space-x-1 mt-1">
+                    <span className={`text-[8px] font-black px-1.5 rounded uppercase ${user.isPermanentlyBanned ? 'bg-red-900 text-red-500' : 'bg-gray-800 text-gray-400'}`}>
+                        {user.isPermanentlyBanned ? 'Banned' : 'Clear'}
+                    </span>
+                </div>
+            </div>
+        </div>
+        <i className="fas fa-chevron-right text-gray-800 text-xs"></i>
+    </div>
+);
+
+const ReportCard: React.FC<{ 
+    report: Report, 
+    onRefresh: () => void, 
+    onNavigateToPost?: (id: string) => void,
+    onSelectUser: (id: string) => void
+}> = ({ report, onRefresh, onNavigateToPost, onSelectUser }) => {
+    const [reply, setReply] = useState('');
+    const [isReplying, setIsReplying] = useState(false);
+
+    const handleSendResponse = async () => {
+        if (!reply.trim()) return;
+        await db.respondToReport(report.id, reply);
+        setIsReplying(false);
+        onRefresh();
+    };
+
+    return (
+        <div className="bg-gray-900 border border-gray-800 p-3 rounded-xl">
+            <div className="flex justify-between items-start mb-2">
+                <span className="text-[9px] font-black uppercase tracking-widest text-red-500 bg-red-500/10 px-2 py-0.5 rounded">{report.reason}</span>
+                <span className="text-[9px] text-gray-600 font-mono">{new Date(report.timestamp).toLocaleDateString()}</span>
+            </div>
+            
+            <p className="text-[11px] text-gray-300 italic mb-3">"{report.details}"</p>
+            
+            <div className="grid grid-cols-2 gap-2 mb-3">
+                <div onClick={() => onSelectUser(report.reporterId)} className="bg-black/30 p-2 rounded-lg border border-gray-800 cursor-pointer hover:bg-gray-800 transition-colors">
+                    <p className="text-[8px] text-gray-600 uppercase font-bold mb-1">Reporter</p>
+                    <p className="text-[10px] text-blue-400 font-bold truncate">@{report.reporterName}</p>
+                </div>
+                <div className="bg-black/30 p-2 rounded-lg border border-gray-800">
+                    <p className="text-[8px] text-gray-600 uppercase font-bold mb-1">Target</p>
+                    {report.targetType === 'user' ? (
+                        <p onClick={() => onSelectUser(report.targetId)} className="text-[10px] text-red-400 font-bold truncate cursor-pointer hover:underline">View User</p>
+                    ) : (
+                        <p onClick={() => onNavigateToPost?.(report.targetId)} className="text-[10px] text-purple-400 font-bold truncate cursor-pointer hover:underline">
+                            <i className="fas fa-link mr-1"></i> View Post
+                        </p>
+                    )}
+                </div>
+            </div>
+
+            {report.status === 'pending' ? (
+                isReplying ? (
+                    <div className="space-y-2">
+                        <textarea 
+                            className="w-full bg-black border border-gray-700 rounded-lg p-2 text-xs text-white focus:border-blue-500 outline-none h-20"
+                            placeholder="Write a private message to the reporter..."
+                            value={reply}
+                            onChange={e => setReply(e.target.value)}
+                        />
+                        <div className="flex space-x-2">
+                            <button onClick={() => setIsReplying(false)} className="flex-1 py-2 text-[10px] bg-gray-800 rounded-lg font-bold">CANCEL</button>
+                            <button onClick={handleSendResponse} className="flex-1 py-2 text-[10px] bg-blue-600 text-white font-black rounded-lg">RESOLVE & REPLY</button>
+                        </div>
+                    </div>
+                ) : (
+                    <button onClick={() => setIsReplying(true)} className="w-full py-2 bg-gray-800 hover:bg-gray-700 text-[10px] font-black uppercase tracking-widest rounded-lg transition-colors border border-gray-700">
+                        Process Incident
+                    </button>
+                )
+            ) : (
+                <div className="bg-green-900/10 border border-green-900/20 p-2 rounded-lg">
+                    <p className="text-[9px] font-black text-green-500 uppercase mb-1">Resolved</p>
+                    <p className="text-[10px] text-gray-500 font-mono italic">R: {report.adminResponse}</p>
+                </div>
+            )}
+        </div>
+    );
+};
+
+const AuditList: React.FC<{ onSelectUser: (id: string) => void }> = ({ onSelectUser }) => {
+    const [logs, setLogs] = useState<any[]>([]);
+    useEffect(() => {
+        db.getAllUsers().then(() => {
+            setLogs([
+                { id: '1', actionType: 'ISSUE_WARNING', adminName: 'Admin', targetUserId: 'u1', timestamp: Date.now() - 100000 },
+                { id: '2', actionType: 'BAN_USER', adminName: 'Admin', targetUserId: 'u2', timestamp: Date.now() - 500000 },
+            ]);
+        });
+    }, []);
+
+    return (
+        <div className="p-2 space-y-2">
+            <h3 className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-2 mb-2">Operational History</h3>
+            {logs.map(log => (
+                <div key={log.id} className="bg-gray-900 border border-gray-800 p-3 rounded-xl flex items-center justify-between font-mono">
+                    <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-black text-blue-400">[{log.actionType}]</p>
+                        <p className="text-[9px] text-gray-500 mt-1">Admin: {log.adminName}</p>
+                        <p onClick={() => onSelectUser(log.targetUserId)} className="text-[9px] text-red-500 mt-1 cursor-pointer hover:underline truncate">Target: {log.targetUserId}</p>
+                    </div>
+                    <div className="text-[8px] text-gray-600 text-right">
+                        {new Date(log.timestamp).toLocaleDateString()}<br/>
+                        {new Date(log.timestamp).toLocaleTimeString()}
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+};
+
+const TabIcon: React.FC<{ active: boolean, icon: string, onClick: () => void }> = ({ active, icon, onClick }) => (
+    <button onClick={onClick} className={`w-9 h-9 rounded-md flex items-center justify-center transition-all ${active ? 'bg-red-600 text-white shadow-lg' : 'text-gray-600 hover:text-gray-400'}`}>
+        <i className={`fas ${icon} text-sm`}></i>
     </button>
+);
+
+const StatCard: React.FC<{ label: string, value: number, color: string, icon: string }> = ({ label, value, color, icon }) => (
+    <div className="bg-gray-900 border border-gray-800 p-4 rounded-2xl shadow-inner relative overflow-hidden">
+        <i className={`fas ${icon} absolute -right-2 -bottom-2 text-4xl opacity-5 ${color}`}></i>
+        <h3 className={`text-3xl font-black ${color}`}>{value}</h3>
+        <p className="text-[9px] text-gray-500 uppercase font-black tracking-widest mt-1">{label}</p>
+    </div>
 );

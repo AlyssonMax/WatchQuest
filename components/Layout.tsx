@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { db } from '../services/db';
 
@@ -52,8 +53,9 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, onNavigate,
                     )}
                 </button>
                 
-                {/* Profile Avatar Trigger */}
-                <div className="ml-2 w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-xs font-bold shadow-lg cursor-pointer" onClick={() => onNavigate('profile')}>
+                {/* Profile Avatar Trigger - Now goes to Settings as requested */}
+                <div className="ml-2 w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-xs font-bold shadow-lg cursor-pointer" onClick={() => onNavigate('settings')}>
+                    <i className="fas fa-cog text-[10px] text-white/50 absolute -top-1 -right-1 bg-gray-900 rounded-full p-0.5"></i>
                     MS
                 </div>
             </div>

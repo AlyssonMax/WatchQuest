@@ -1,4 +1,10 @@
 
+export enum MediaType {
+  MOVIE = 'Movie',
+  SERIES = 'Series',
+  ANIME = 'Anime',
+}
+
 export enum PrivacyLevel {
   PUBLIC = 'Public',
   FOLLOWERS = 'Followers Only',
@@ -17,40 +23,84 @@ export enum UserRole {
 }
 
 export enum BadgeType {
-  OFFICIAL = 'official', // System achievements & Admin badges
-  COMMUNITY = 'community', // "Patches" created by users for their specific lists
+  OFFICIAL = 'official',
+  COMMUNITY = 'community',
 }
 
 export enum ListCategory {
   GENERAL = 'General',
-  GENRE = 'Genre',
-  ACTOR = 'Actor',
-  ACTRESS = 'Actress',
-  DIRECTOR = 'Director',
-  WRITER = 'Writer',
-  COMPOSER = 'Composer',
-  ART_DIRECTOR = 'Art Director',
-  CINEMATOGRAPHER = 'Cinematographer',
-  PRODUCER = 'Producer',
-  EDITOR = 'Editor',
+  GENRE = 'Genre Based',
+  ART_DIRECTOR = 'Art Director Focus',
+  ACTOR_FOCUS = 'Actor Focus',
+  CHALLENGE = 'Challenge',
 }
 
-export enum ReportReason {
-  INAPPROPRIATE_CONTENT = 'Inappropriate Image/Content',
-  INCORRECT_INFO = 'Incorrect Movie Information',
-  SPAM = 'Spam',
-  OTHER = 'Other'
-}
-
-export interface Report {
+export interface Movie {
   id: string;
-  reporterId: string;
-  targetId: string; // List ID or User ID being reported
-  targetType: 'list' | 'user';
-  reason: ReportReason;
-  details: string;
+  title: string;
+  year: number;
+  duration: string;
+  rating: number;
+  poster: string;
+  synopsis: string;
+  availableOn: string[];
+  // Added type and totalEpisodes for consistency with db.ts and ListViewScreen
+  type: MediaType;
+  totalEpisodes?: number;
+}
+
+// Added Media alias as used in db.ts
+export type Media = Movie;
+
+export interface ListItem {
+  // Renamed from movie to media to align with db.ts and ListViewScreen
+  media: Media;
+  status: WatchStatus;
+  progressMinutes?: number;
+  // Added currentEpisode for episodic content
+  currentEpisode?: number;
+}
+
+export interface Reaction {
+  id: string;
+  userId: string;
+  emoji: string;
   timestamp: number;
-  status: 'pending' | 'resolved';
+}
+
+export interface Comment {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  text: string;
+  timestamp: number;
+  replies?: Comment[];
+}
+
+export interface Badge {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  type: BadgeType;
+  earnedDate?: string;
+  relatedListId?: string;
+}
+
+export interface MediaList {
+  id: string;
+  creatorId: string;
+  creatorName: string;
+  creatorAvatar: string;
+  title: string;
+  description: string;
+  category: ListCategory;
+  privacy: PrivacyLevel;
+  items: ListItem[];
+  reactions: Reaction[];
+  comments: Comment[];
+  badgeReward?: Badge;
 }
 
 export interface NotificationSettings {
@@ -58,6 +108,30 @@ export interface NotificationSettings {
   comments: boolean;
   follows: boolean;
   mentions: boolean;
+}
+
+export interface Strike {
+  id: string;
+  reason: string;
+  timestamp: number;
+  expiresAt: number;
+  issuedByAdminId: string;
+}
+
+export interface AdminLog {
+  id: string;
+  adminId: string;
+  adminName: string;
+  targetUserId: string;
+  actionType: 'RESET_PASSWORD' | 'ISSUE_WARNING' | 'BAN_USER';
+  metadata: any;
+  timestamp: number;
+}
+
+export interface BannedEmail {
+  email: string;
+  bannedAt: number;
+  reason: string;
 }
 
 export interface User {
@@ -74,94 +148,57 @@ export interface User {
   privacy: PrivacyLevel;
   followers: number;
   following: number;
-  followingIds: string[]; // List of IDs this user follows
-  followedListIds: string[]; // List of List IDs this user has saved/followed
-  joinedAt: number; // Timestamp for Veteran badges
+  followingIds: string[];
+  followedListIds: string[];
+  joinedAt: number;
   badges: Badge[];
-  watchedMovieIds: string[]; // Global history of completed movies
-  watchingMovieIds: string[]; // Global history of in-progress movies
-  watchProgress: Record<string, number>; // Map of MovieID -> Minutes watched
-  notificationSettings: NotificationSettings; // User preferences
+  watchedMovieIds: string[];
+  watchingMovieIds: string[];
+  watchProgress: Record<string, number>;
+  notificationSettings: NotificationSettings;
+  strikes: Strike[];
+  isPermanentlyBanned: boolean;
+  banReason?: string;
 }
 
-export interface Badge {
+export enum ReportReason {
+  INAPPROPRIATE_CONTENT = 'Inappropriate Image/Content',
+  INCORRECT_INFO = 'Incorrect Movie Information',
+  SPAM = 'Spam',
+  OTHER = 'Other'
+}
+
+export interface Report {
   id: string;
-  name: string;
-  icon: string; // FontAwesome class OR Base64 Image URL
-  type: BadgeType;
-  description: string;
-  earnedDate: string;
-  relatedListId?: string;
-}
-
-export interface Movie {
-  id: string;
-  title: string;
-  year: number;
-  duration: string;
-  poster: string;
-  rating: number;
-  synopsis: string;
-  availableOn?: string[];
-}
-
-export interface ListItem {
-  movie: Movie;
-  status: WatchStatus;
-  progressMinutes: number;
-}
-
-export interface Comment {
-  id: string;
-  userId: string;
-  userName: string;
-  userAvatar: string;
-  text: string;
+  reporterId: string;
+  reporterName: string;
+  targetId: string;
+  targetType: 'list' | 'user';
+  reason: ReportReason;
+  details: string;
   timestamp: number;
-  replies: Comment[]; // Nested replies
+  status: 'pending' | 'resolved';
+  adminResponse?: string;
+  respondedAt?: number;
 }
-
-export interface MediaList {
-  id: string;
-  creatorId: string;
-  creatorName: string;
-  creatorAvatar: string;
-  title: string;
-  description: string;
-  category: ListCategory;
-  items: ListItem[];
-  badgeReward?: Badge;
-  privacy: PrivacyLevel;
-  reactions: Reaction[];
-  comments: Comment[];
-}
-
-export interface Reaction {
-  id: string;
-  userId: string;
-  emoji: string;
-  timestamp: number;
-}
-
-export type NotificationType = 'like' | 'comment' | 'follow' | 'mention';
 
 export interface Notification {
   id: string;
-  userId: string; // Recipient
-  type: NotificationType;
-  actorId: string; // Who triggered it
+  userId: string;
+  type: 'like' | 'comment' | 'follow' | 'mention' | 'admin_response' | 'strike_alert';
+  actorId: string;
   actorName: string;
   actorAvatar: string;
-  targetId?: string; // List ID or Profile ID
-  targetPreview?: string; // List Title or Comment text snippet
+  targetId?: string;
+  targetPreview?: string;
   isRead: boolean;
   timestamp: number;
 }
 
 export interface ActivityItem {
-    id: string;
-    type: 'list_created' | 'badge_earned';
-    user: User;
-    timestamp: number;
-    data: any; // MediaList or Badge
+  id: string;
+  type: 'list_created' | 'badge_earned';
+  user: User;
+  timestamp: number;
+  data: any;
 }
