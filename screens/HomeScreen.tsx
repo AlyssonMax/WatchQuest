@@ -8,7 +8,6 @@ export const HomeScreen: React.FC<{ onNavigate: (tab: string, params?: any) => v
     const [lists, setLists] = useState<MediaList[]>([]);
     const [loading, setLoading] = useState(true);
 
-    // Global Report State for the Screen
     const [reportListId, setReportListId] = useState<string | null>(null);
     const [reportReason, setReportReason] = useState<ReportReason>(ReportReason.INAPPROPRIATE_CONTENT);
     const [reportDetails, setReportDetails] = useState('');
@@ -56,7 +55,6 @@ export const HomeScreen: React.FC<{ onNavigate: (tab: string, params?: any) => v
                 ))
             )}
 
-            {/* REPORT MODAL */}
             {reportListId && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
                     <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-sm overflow-hidden shadow-2xl">
@@ -113,7 +111,6 @@ const FeedCard: React.FC<{ list: MediaList; onOpen: () => void; onReport: () => 
     useEffect(() => {
         db.getCurrentUser().then(setUser);
         
-        // Click outside to close menu
         const handleClickOutside = (event: MouseEvent) => {
             if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
                 setShowMenu(false);
@@ -126,7 +123,6 @@ const FeedCard: React.FC<{ list: MediaList; onOpen: () => void; onReport: () => 
     const toggleReaction = async (emoji: string) => {
         if(!user) return;
         
-        // Optimistic update
         const previousReactions = [...reactions];
         const existing = reactions.find(r => r.userId === user.id && r.emoji === emoji);
         if (existing) {
@@ -144,10 +140,8 @@ const FeedCard: React.FC<{ list: MediaList; onOpen: () => void; onReport: () => 
         }
     };
 
-    // Calculate progress for the feed view
     const totalItems = list.items.length;
     
-    // NEW CALCULATION - Updated to use item.media
     const totalProgressValue = list.items.reduce((acc, item) => {
         if (item.status === WatchStatus.WATCHED) return acc + 100;
         if (item.status === WatchStatus.WATCHING) {
@@ -161,7 +155,6 @@ const FeedCard: React.FC<{ list: MediaList; onOpen: () => void; onReport: () => 
     
     const progress = totalItems > 0 ? (totalProgressValue / totalItems) : 0;
 
-    // Recursive function to count total comments including replies
     const countComments = (comments: any[]): number => {
         let count = comments.length;
         comments.forEach(c => {
@@ -174,7 +167,6 @@ const FeedCard: React.FC<{ list: MediaList; onOpen: () => void; onReport: () => 
 
     return (
         <div className="bg-gray-800 rounded-xl overflow-hidden shadow-lg border border-gray-700 relative">
-            {/* Header */}
             <div className="p-4 flex items-center justify-between">
                 <div className="flex items-center space-x-3 cursor-pointer group" onClick={onUserClick}>
                     <img src={list.creatorAvatar} alt={list.creatorName} className="w-10 h-10 rounded-full border-2 border-purple-500 object-cover group-hover:border-white transition-colors" />
@@ -184,7 +176,6 @@ const FeedCard: React.FC<{ list: MediaList; onOpen: () => void; onReport: () => 
                     </div>
                 </div>
                 
-                {/* 3 DOTS MENU */}
                 <div className="relative" ref={menuRef}>
                     <button onClick={() => setShowMenu(!showMenu)} className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white rounded-full hover:bg-gray-700 transition-colors">
                         <i className="fas fa-ellipsis-v"></i>
@@ -213,12 +204,10 @@ const FeedCard: React.FC<{ list: MediaList; onOpen: () => void; onReport: () => 
                 </div>
             </div>
 
-            {/* Content - Clickable */}
             <div className="px-4 pb-2 cursor-pointer" onClick={onOpen}>
                 <h3 className="text-lg font-bold text-white mb-1">{list.title}</h3>
                 <p className="text-sm text-gray-300 mb-3 line-clamp-2">{list.description}</p>
                 
-                {/* Mini Poster Grid - Updated to use item.media */}
                 <div className="flex space-x-2 overflow-x-auto pb-2 scrollbar-hide pointer-events-none">
                     {list.items.slice(0, 4).map((item, idx) => (
                         <div key={idx} className="relative flex-shrink-0 w-20">
@@ -237,7 +226,6 @@ const FeedCard: React.FC<{ list: MediaList; onOpen: () => void; onReport: () => 
                     )}
                 </div>
 
-                {/* Progress Bar */}
                 <div className="mt-3 flex items-center space-x-2 text-xs text-gray-400">
                     <div className="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
                         <div className="h-full bg-purple-500" style={{ width: `${progress}%` }}></div>
@@ -246,7 +234,6 @@ const FeedCard: React.FC<{ list: MediaList; onOpen: () => void; onReport: () => 
                 </div>
             </div>
 
-            {/* Action Bar */}
             <div className="px-4 py-3 bg-gray-800/50 border-t border-gray-700 flex items-center justify-between relative">
                 <div className="flex space-x-1 min-h-[28px]">
                     {reactions.slice(0, 5).map((r, i) => (
@@ -256,10 +243,13 @@ const FeedCard: React.FC<{ list: MediaList; onOpen: () => void; onReport: () => 
                 </div>
                 
                 <div className="flex space-x-4">
-                     {/* Badge Reward Indicator if exists */}
                     {list.badgeReward && (
-                        <div className="flex items-center space-x-1 text-yellow-500" title={`Complete to earn: ${list.badgeReward.name}`}>
-                            <i className={`fas ${list.badgeReward.icon}`}></i>
+                        <div className="flex items-center justify-center w-6 h-6" title={`Complete to earn: ${list.badgeReward.name}`}>
+                            {list.badgeReward.icon.startsWith('data:') || list.badgeReward.icon.startsWith('http') ? (
+                                <img src={list.badgeReward.icon} className="w-full h-full object-contain" />
+                            ) : (
+                                <i className={`fas ${list.badgeReward.icon} text-yellow-500`}></i>
+                            )}
                         </div>
                     )}
 
@@ -276,7 +266,6 @@ const FeedCard: React.FC<{ list: MediaList; onOpen: () => void; onReport: () => 
                     </button>
                 </div>
 
-                {/* Floating Emoji Picker */}
                 {showEmojiPicker && (
                     <div className="absolute bottom-12 right-4 bg-gray-800 border border-gray-600 rounded-2xl shadow-xl p-2 flex gap-1 z-10 animate-fade-in-up">
                         {AVAILABLE_EMOJIS.map(emoji => (

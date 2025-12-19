@@ -1,17 +1,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { MediaList, Movie, PrivacyLevel, ListCategory, MediaType } from '../types';
+import { MediaList, Movie, PrivacyLevel, ListCategory, MediaType, Season } from '../types';
 import { db } from '../services/db';
 import { compressImage, processPatchImage } from '../services/imageUtils';
-
-const STREAMING_SERVICES = [
-    { id: 'Netflix', label: 'Netflix', color: 'bg-red-600' },
-    { id: 'Prime Video', label: 'Prime', color: 'bg-blue-500' },
-    { id: 'Disney+', label: 'Disney+', color: 'bg-blue-900' },
-    { id: 'HBO Max', label: 'Max', color: 'bg-purple-700' },
-    { id: 'Hulu', label: 'Hulu', color: 'bg-green-500' },
-    { id: 'Apple TV+', label: 'AppleTV', color: 'bg-gray-800' },
-];
 
 export const CreateListScreen: React.FC<{ onSave: () => void; onCancel: () => void }> = ({ onSave, onCancel }) => {
     const [title, setTitle] = useState('');
@@ -30,16 +21,18 @@ export const CreateListScreen: React.FC<{ onSave: () => void; onCancel: () => vo
     
     const [isSaving, setIsSaving] = useState(false);
     const [isSearching, setIsSearching] = useState(false);
+    const [searchError, setSearchError] = useState('');
 
     const [showManual, setShowManual] = useState(false);
     const [customTitle, setCustomTitle] = useState('');
     const [customYear, setCustomYear] = useState('');
     const [customPoster, setCustomPoster] = useState('');
-    const [customStreamings, setCustomStreamings] = useState<string[]>([]);
+    const [customType, setCustomType] = useState<MediaType>(MediaType.MOVIE);
+    
+    const [customSeasons, setCustomSeasons] = useState<Season[]>([{ seasonNumber: 1, episodesCount: 1 }]);
     
     const posterInputRef = useRef<HTMLInputElement>(null);
 
-    // --- REAL TIME SIMILARITY CHECK ---
     useEffect(() => {
         const checkSimilarity = async () => {
             if (title.length > 3) {
@@ -53,21 +46,22 @@ export const CreateListScreen: React.FC<{ onSave: () => void; onCancel: () => vo
         return () => clearTimeout(timeoutId);
     }, [title]);
 
-    // --- GLOBAL MOVIE SEARCH ---
     useEffect(() => {
         const performSearch = async () => {
             if (searchQuery.length > 1) {
                 setIsSearching(true);
+                setSearchError('');
                 try {
                     const results = await db.searchGlobalMovies(searchQuery);
                     setSearchResults(results);
-                } catch (e) {
-                    console.error("Search failed", e);
+                } catch (e: any) {
+                    setSearchError(e.message || "Search failed");
                 } finally {
                     setIsSearching(false);
                 }
             } else {
                 setSearchResults([]);
+                setSearchError('');
             }
         };
         const timeoutId = setTimeout(performSearch, 500);
@@ -106,17 +100,26 @@ export const CreateListScreen: React.FC<{ onSave: () => void; onCancel: () => vo
         }
     };
 
-    const toggleStreaming = (serviceId: string) => {
-        if (customStreamings.includes(serviceId)) {
-            setCustomStreamings(customStreamings.filter(s => s !== serviceId));
-        } else {
-            setCustomStreamings([...customStreamings, serviceId]);
+    const handleSeasonChange = (index: number, episodes: number) => {
+        const updated = [...customSeasons];
+        updated[index].episodesCount = Math.max(1, episodes);
+        setCustomSeasons(updated);
+    };
+
+    const addSeasonField = () => {
+        setCustomSeasons([...customSeasons, { seasonNumber: customSeasons.length + 1, episodesCount: 1 }]);
+    };
+
+    const removeSeasonField = () => {
+        if (customSeasons.length > 1) {
+            setCustomSeasons(customSeasons.slice(0, -1));
         }
     };
 
     const handleAddCustomMovie = async () => {
         if (!customTitle) return;
         
+        const isSeries = customType !== MediaType.MOVIE;
         const posterUrl = customPoster.trim() 
             ? customPoster 
             : `https://placehold.co/300x450/374151/FFFFFF/png?text=${encodeURIComponent(customTitle)}`;
@@ -125,19 +128,22 @@ export const CreateListScreen: React.FC<{ onSave: () => void; onCancel: () => vo
             id: `custom_${Date.now()}`,
             title: customTitle,
             year: parseInt(customYear) || new Date().getFullYear(),
-            duration: '?? min',
+            duration: isSeries ? `${customSeasons.length} Seasons` : '120 min',
             poster: posterUrl,
             rating: 0,
             synopsis: 'User added content.',
-            availableOn: customStreamings,
-            type: MediaType.MOVIE
+            availableOn: [],
+            type: customType,
+            totalSeasons: isSeries ? customSeasons.length : undefined,
+            seasonsData: isSeries ? customSeasons : undefined
         };
 
         handleAddMovie(newMovie);
         setCustomTitle('');
         setCustomYear('');
         setCustomPoster('');
-        setCustomStreamings([]);
+        setCustomType(MediaType.MOVIE);
+        setCustomSeasons([{ seasonNumber: 1, episodesCount: 1 }]);
         setShowManual(false);
     };
 
@@ -159,20 +165,14 @@ export const CreateListScreen: React.FC<{ onSave: () => void; onCancel: () => vo
 
     return (
         <div className="p-4 h-full flex flex-col bg-gray-900 overflow-hidden">
-             {/* HEADER COM BOTÃO DE SALVAR */}
              <div className="flex items-center justify-between mb-6 sticky top-0 bg-gray-900 z-50 py-2 border-b border-gray-800">
                 <h2 className="text-xl font-bold">Create List</h2>
                 <div className="flex items-center space-x-2">
-                    <button
-                        onClick={onCancel}
-                        className="text-gray-400 hover:text-white px-3 py-2 rounded-lg text-sm font-semibold transition-colors"
-                    >
-                        Cancel
-                    </button>
+                    <button onClick={onCancel} className="text-gray-400 hover:text-white px-3 py-2 rounded-lg text-sm font-semibold transition-colors">Cancel</button>
                     <button 
                         onClick={handleSave}
                         disabled={!title || selectedMovies.length === 0 || isSaving}
-                        className="bg-purple-600 text-white px-5 py-2 rounded-full text-xs font-black uppercase tracking-widest disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-500 transition-all shadow-lg active:scale-95 flex items-center"
+                        className="bg-purple-600 text-white px-5 py-2 rounded-full text-xs font-black uppercase tracking-widest disabled:opacity-50 hover:bg-purple-500 shadow-lg active:scale-95 transition-all"
                     >
                         {isSaving ? <i className="fas fa-circle-notch fa-spin mr-2"></i> : null}
                         Save List
@@ -181,41 +181,58 @@ export const CreateListScreen: React.FC<{ onSave: () => void; onCancel: () => vo
             </div>
 
             <div className="space-y-6 flex-1 overflow-y-auto pb-24 scrollbar-hide">
-                {/* 1. Basic Info */}
                 <div className="space-y-4">
                     <input 
                         type="text" 
-                        placeholder="List Title (e.g. Summer Vibes)" 
+                        placeholder="List Title" 
                         className="w-full bg-gray-800 text-white p-4 rounded-2xl border border-gray-700 focus:border-purple-500 focus:outline-none transition-all"
                         value={title}
                         onChange={(e) => setTitle(e.target.value)}
                     />
-                    
-                    {similarLists.length > 0 && (
-                        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3 animate-fade-in">
-                            <p className="text-[10px] text-yellow-500 font-black uppercase mb-2">
-                                <i className="fas fa-exclamation-triangle mr-1"></i> Similar lists found:
-                            </p>
-                            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-                                {similarLists.map(l => (
-                                    <div key={l.id} className="bg-gray-900 p-2 rounded-lg border border-gray-800 min-w-[140px]">
-                                        <p className="text-[11px] font-bold truncate text-white">{l.title}</p>
-                                        <p className="text-[9px] text-gray-500 truncate">by {l.creatorName}</p>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
                     <textarea 
-                        placeholder="What is this collection about?" 
-                        className="w-full bg-gray-800 text-white p-4 rounded-2xl border border-gray-700 focus:border-purple-500 focus:outline-none transition-all h-24 resize-none"
+                        placeholder="Collection description..." 
+                        className="w-full bg-gray-800 text-white p-4 rounded-2xl border border-gray-700 focus:border-purple-500 focus:outline-none h-24 resize-none"
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
                     />
+
+                    {/* PATCH REWARD UPLOAD SECTION */}
+                    <div className="bg-gray-800/40 p-4 rounded-2xl border border-gray-700 border-dashed">
+                        <div className="flex items-center justify-between mb-3">
+                            <div>
+                                <h3 className="text-xs font-black text-purple-400 uppercase tracking-widest">Completion Patch</h3>
+                                <p className="text-[10px] text-gray-500">Reward given to users who complete this list.</p>
+                            </div>
+                            {patchImage && (
+                                <button onClick={() => setPatchImage('')} className="text-red-500 text-[10px] font-bold">Remove</button>
+                            )}
+                        </div>
+                        
+                        <div className="flex items-center space-x-4">
+                            <div 
+                                onClick={() => patchInputRef.current?.click()}
+                                className="w-16 h-16 rounded-full bg-gray-900 border-2 border-dashed border-gray-700 flex items-center justify-center cursor-pointer hover:border-purple-500 transition-all overflow-hidden"
+                            >
+                                {patchImage ? (
+                                    <img src={patchImage} className="w-full h-full object-contain p-1" />
+                                ) : (
+                                    <i className="fas fa-plus text-gray-600"></i>
+                                )}
+                            </div>
+                            <div className="flex-1">
+                                <button 
+                                    onClick={() => patchInputRef.current?.click()}
+                                    className="text-[10px] font-black uppercase tracking-widest bg-gray-700 px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors"
+                                >
+                                    {patchImage ? 'Change Image' : 'Upload PNG Patch'}
+                                </button>
+                                <p className="text-[8px] text-gray-600 mt-1 uppercase">Transparency recommended (PNG only)</p>
+                            </div>
+                        </div>
+                        <input type="file" ref={patchInputRef} className="hidden" accept="image/png" onChange={handlePatchUpload} />
+                    </div>
                 </div>
 
-                {/* 2. Categorization */}
                 <div className="grid grid-cols-2 gap-3">
                     <select 
                         className="bg-gray-800 border border-gray-700 text-sm rounded-xl p-3 text-white outline-none w-full"
@@ -237,36 +254,6 @@ export const CreateListScreen: React.FC<{ onSave: () => void; onCancel: () => vo
                     </select>
                 </div>
 
-                {/* 3. Patch Reward */}
-                <div>
-                    <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest mb-2 block">Completion Patch</label>
-                    <div className="flex items-center space-x-4 bg-gray-800 p-4 rounded-2xl border border-gray-700">
-                        <div className="w-16 h-16 bg-gray-900 rounded-2xl flex items-center justify-center overflow-hidden border-2 border-gray-700 border-dashed relative">
-                            {patchImage ? (
-                                <img src={patchImage} className="w-full h-full object-contain p-1" />
-                            ) : (
-                                <i className="fas fa-medal text-gray-700 text-2xl"></i>
-                            )}
-                        </div>
-                        <div className="flex-1">
-                            <input 
-                                type="file" 
-                                ref={patchInputRef} 
-                                className="hidden" 
-                                accept="image/png" 
-                                onChange={handlePatchUpload}
-                            />
-                            <button 
-                                onClick={() => patchInputRef.current?.click()}
-                                className="text-[10px] bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-full font-black uppercase tracking-widest"
-                            >
-                                {patchImage ? 'Change PNG' : 'Upload PNG'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                {/* 4. Add Content Section */}
                 <div className="pt-4 border-t border-gray-800">
                     <div className="flex bg-gray-800 p-1.5 rounded-2xl border border-gray-700 mb-4">
                         <button 
@@ -289,47 +276,46 @@ export const CreateListScreen: React.FC<{ onSave: () => void; onCancel: () => vo
                                 <i className={`fas ${isSearching ? 'fa-circle-notch fa-spin' : 'fa-search'} absolute left-4 top-4 text-gray-500`}></i>
                                 <input 
                                     type="text" 
-                                    placeholder="Search movies or series..." 
-                                    className="w-full bg-gray-800 text-white pl-12 pr-4 py-4 rounded-2xl border border-gray-700 focus:border-purple-500 focus:outline-none transition-all"
+                                    placeholder="Search for movies or series..." 
+                                    className="w-full bg-gray-800 text-white pl-12 pr-4 py-4 rounded-2xl border border-gray-700 focus:border-purple-500 outline-none"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                 />
                             </div>
+
+                            {searchError && <p className="text-red-500 text-xs mt-2 px-2 italic">{searchError}</p>}
                             
-                            {/* DROPDOWN DE RESULTADOS DE BUSCA */}
                             {searchResults.length > 0 && (
-                                <div className="absolute w-full mt-2 bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl z-50 max-h-72 overflow-y-auto">
-                                    {searchResults.map(movie => (
+                                <div className="absolute w-full mt-2 bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl z-50 max-h-72 overflow-y-auto scrollbar-hide">
+                                    {searchResults.map(media => (
                                         <div 
-                                            key={movie.id} 
-                                            onClick={() => handleAddMovie(movie)}
-                                            className="p-3 flex items-center space-x-4 hover:bg-gray-700 cursor-pointer border-b border-gray-700/30 last:border-0 transition-colors"
+                                            key={media.id} 
+                                            onClick={() => handleAddMovie(media)}
+                                            className="p-3 flex items-center space-x-4 hover:bg-gray-700 cursor-pointer border-b border-gray-700 last:border-0 transition-colors"
                                         >
-                                            <img src={movie.poster} className="w-10 h-14 object-cover rounded-lg shadow-md" />
+                                            <img src={media.poster} className="w-10 h-14 object-cover rounded-lg shadow-md" />
                                             <div className="flex-1 min-w-0">
-                                                <p className="font-bold text-sm text-white truncate">{movie.title}</p>
-                                                <p className="text-[10px] text-gray-500 font-black uppercase">{movie.year} • {movie.type}</p>
+                                                <p className="font-bold text-sm text-white truncate">{media.title}</p>
+                                                <p className="text-[10px] text-gray-500 uppercase font-black tracking-tighter">{media.year} • {media.type}</p>
                                             </div>
-                                            <i className="fas fa-plus-circle text-purple-500 text-lg"></i>
+                                            <i className="fas fa-plus-circle text-purple-500"></i>
                                         </div>
                                     ))}
                                 </div>
                             )}
                         </div>
                     ) : (
-                        <div className="bg-gray-800 p-4 rounded-2xl border border-gray-700 space-y-4">
-                             <input 
-                                type="text" 
-                                placeholder="Media Title" 
-                                className="w-full bg-gray-900 text-white p-3 rounded-xl border border-gray-700 text-sm outline-none"
-                                value={customTitle}
-                                onChange={(e) => setCustomTitle(e.target.value)}
-                            />
+                        <div className="bg-gray-800 p-4 rounded-2xl border border-gray-700 space-y-4 animate-fade-in">
                              <div className="flex space-x-2">
-                                <button onClick={() => posterInputRef.current?.click()} className="bg-gray-700 px-4 rounded-xl border border-gray-600 text-gray-300 active:scale-95 transition-transform flex items-center justify-center">
-                                    <i className="fas fa-upload mr-2"></i> Poster
-                                </button>
-                                <input type="file" ref={posterInputRef} className="hidden" accept="image/*" onChange={handlePosterUpload} />
+                                <select 
+                                    className="flex-1 bg-gray-900 text-white p-3 rounded-xl border border-gray-700 text-sm outline-none"
+                                    value={customType}
+                                    onChange={(e) => setCustomType(e.target.value as MediaType)}
+                                >
+                                    {Object.values(MediaType).map(type => (
+                                        <option key={type} value={type}>{type}</option>
+                                    ))}
+                                </select>
                                 <input 
                                     type="number" 
                                     placeholder="Year" 
@@ -337,42 +323,76 @@ export const CreateListScreen: React.FC<{ onSave: () => void; onCancel: () => vo
                                     value={customYear}
                                     onChange={(e) => setCustomYear(e.target.value)}
                                 />
+                             </div>
+                             
+                             <input 
+                                type="text" 
+                                placeholder="Media Title" 
+                                className="w-full bg-gray-900 text-white p-3 rounded-xl border border-gray-700 text-sm outline-none"
+                                value={customTitle}
+                                onChange={(e) => setCustomTitle(e.target.value)}
+                            />
+
+                             {customType !== MediaType.MOVIE && (
+                                 <div className="bg-gray-900/50 p-3 rounded-xl border border-gray-700/50 space-y-3">
+                                     <div className="flex items-center justify-between">
+                                        <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Seasons Configuration</span>
+                                        <div className="flex space-x-1">
+                                            <button onClick={removeSeasonField} className="w-6 h-6 bg-red-900/20 text-red-500 rounded flex items-center justify-center text-[10px]"><i className="fas fa-minus"></i></button>
+                                            <button onClick={addSeasonField} className="w-6 h-6 bg-green-900/20 text-green-500 rounded flex items-center justify-center text-[10px]"><i className="fas fa-plus"></i></button>
+                                        </div>
+                                     </div>
+                                     <div className="max-h-32 overflow-y-auto space-y-2 pr-1 scrollbar-hide">
+                                        {customSeasons.map((s, idx) => (
+                                            <div key={idx} className="flex items-center justify-between bg-gray-800 p-2 rounded-lg">
+                                                <span className="text-[10px] font-bold text-gray-400">Season {s.seasonNumber}</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <span className="text-[9px] text-gray-600 uppercase font-black">Episodes:</span>
+                                                    <input 
+                                                        type="number" 
+                                                        value={s.episodesCount} 
+                                                        onChange={(e) => handleSeasonChange(idx, parseInt(e.target.value))}
+                                                        className="w-12 bg-black text-white text-center rounded border border-gray-700 text-[10px] p-1 focus:border-purple-500 outline-none"
+                                                    />
+                                                </div>
+                                            </div>
+                                        ))}
+                                     </div>
+                                 </div>
+                             )}
+
+                             <div className="flex space-x-2">
+                                <button onClick={() => posterInputRef.current?.click()} className="flex-1 bg-gray-700 py-3 rounded-xl border border-gray-600 text-gray-300 active:scale-95 transition-transform flex items-center justify-center text-[10px] font-black uppercase tracking-widest">
+                                    <i className="fas fa-upload mr-2"></i> {customPoster ? 'Image Uploaded' : 'Upload Poster'}
+                                </button>
+                                <input type="file" ref={posterInputRef} className="hidden" accept="image/*" onChange={handlePosterUpload} />
                             </div>
                             <button 
                                 onClick={handleAddCustomMovie}
                                 disabled={!customTitle}
-                                className="w-full bg-purple-600 text-white text-[10px] font-black uppercase tracking-widest py-3 rounded-xl transition-all disabled:opacity-50"
+                                className="w-full bg-purple-600 text-white text-[10px] font-black uppercase tracking-widest py-3 rounded-xl transition-all disabled:opacity-50 shadow-lg shadow-purple-900/20 active:scale-[0.98]"
                             >
-                                Add Manual Item
+                                Add To List
                             </button>
                         </div>
                     )}
                 </div>
 
-                {/* Selected Movies List */}
                 <div className="space-y-3 mt-6">
                     <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest block">Collection Items ({selectedMovies.length})</label>
-                    {selectedMovies.map((movie) => (
-                        <div key={movie.id} className="flex items-center bg-gray-800/40 p-3 rounded-2xl border border-gray-800 animate-fade-in group">
-                            <img src={movie.poster} className="w-12 h-16 rounded-lg object-cover shadow-lg" />
+                    {selectedMovies.map((media) => (
+                        <div key={media.id} className="flex items-center bg-gray-800/40 p-3 rounded-2xl border border-gray-800 group animate-fade-in-up">
+                            <img src={media.poster} className="w-12 h-16 rounded-lg object-cover shadow-lg" />
                             <div className="ml-4 flex-1 min-w-0">
-                                <h4 className="font-bold text-sm text-white truncate">{movie.title}</h4>
-                                <p className="text-[10px] text-gray-500 font-bold">{movie.year}</p>
+                                <h4 className="font-bold text-sm text-white truncate">{media.title}</h4>
+                                <div className="flex items-center space-x-2">
+                                    <span className="text-[9px] bg-gray-900 px-1.5 py-0.5 rounded text-gray-500 font-bold uppercase">{media.type}</span>
+                                    <span className="text-[10px] text-gray-500 font-bold">{media.year}</span>
+                                </div>
                             </div>
-                            <button 
-                                onClick={() => handleRemoveMovie(movie.id)}
-                                className="p-3 text-gray-600 hover:text-red-500 transition-colors"
-                            >
-                                <i className="fas fa-trash-alt text-xs"></i>
-                            </button>
+                            <button onClick={() => handleRemoveMovie(media.id)} className="p-3 text-gray-600 hover:text-red-500 transition-colors"><i className="fas fa-trash-alt text-xs"></i></button>
                         </div>
                     ))}
-                    {selectedMovies.length === 0 && (
-                        <div className="text-center py-12 text-gray-600 border-2 border-dashed border-gray-800 rounded-3xl">
-                            <i className="fas fa-film text-3xl mb-3 opacity-20"></i>
-                            <p className="text-xs uppercase font-black tracking-widest">No items added yet</p>
-                        </div>
-                    )}
                 </div>
             </div>
         </div>

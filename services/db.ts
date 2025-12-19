@@ -1,5 +1,5 @@
 
-import { MediaList, User, WatchStatus, PrivacyLevel, UserRole, Strike, AdminLog, BannedEmail, Report, ReportReason, Notification, Media, Reaction, Badge, BadgeType, ListCategory, NotificationSettings, ActivityItem, Comment, MediaType } from '../types';
+import { MediaList, User, WatchStatus, PrivacyLevel, UserRole, Strike, AdminLog, BannedEmail, Report, ReportReason, Notification, Media, Reaction, Badge, BadgeType, ListCategory, NotificationSettings, ActivityItem, Comment, MediaType, ListItem, Season } from '../types';
 import { CURRENT_USER, MOCK_LISTS, ADMIN_USER, ADDITIONAL_USERS, MOCK_MOVIES, SYSTEM_BADGES } from './mockData';
 import { omdbService } from './omdb';
 
@@ -151,6 +151,7 @@ class LocalDatabase {
   async createList(title: string, description: string, items: Media[], privacy: PrivacyLevel, category: ListCategory, badgeImage?: string) {
     const me = await this.getCurrentUser();
     if (!me) throw new Error("Auth required");
+    
     const newList: MediaList = {
       id: `l_${Date.now()}`,
       creatorId: me.id,
@@ -160,7 +161,16 @@ class LocalDatabase {
       description,
       category,
       privacy,
-      items: items.map(m => ({ media: m, status: WatchStatus.UNWATCHED })),
+      items: items.map(m => {
+        const isSeries = m.type !== MediaType.MOVIE;
+        return { 
+          media: m, 
+          status: WatchStatus.UNWATCHED,
+          currentSeason: isSeries ? 1 : undefined,
+          currentEpisode: isSeries ? 0 : undefined,
+          watchedHistory: isSeries ? [] : undefined
+        };
+      }),
       reactions: [],
       comments: [],
       badgeReward: badgeImage ? {
@@ -172,10 +182,33 @@ class LocalDatabase {
         relatedListId: `l_${Date.now()}`
       } : undefined
     };
+
     if (newList.badgeReward) newList.badgeReward.relatedListId = newList.id;
     this.data.lists.push(newList);
     this.save();
     return newList;
+  }
+
+  async syncSeasonEpisodes(listId: string, mediaId: string, seasonNumber: number) {
+    const list = await this.getListById(listId);
+    if (!list) return null;
+    const item = list.items.find(i => i.media.id === mediaId);
+    
+    if (item && item.media.seasonsData) {
+      const seasonIdx = item.media.seasonsData.findIndex(s => s.seasonNumber === seasonNumber);
+      if (seasonIdx === -1) return list;
+
+      const season = item.media.seasonsData[seasonIdx];
+      if (!season.episodes || season.episodes.length === 0) {
+        const episodes = await omdbService.getSeasonEpisodes(mediaId, seasonNumber);
+        if (episodes.length > 0) {
+          item.media.seasonsData[seasonIdx].episodes = episodes;
+          item.media.seasonsData[seasonIdx].episodesCount = episodes.length;
+          this.save();
+        }
+      }
+    }
+    return list;
   }
 
   async updateItemStatus(listId: string, mediaId: string, status: WatchStatus) {
@@ -185,34 +218,105 @@ class LocalDatabase {
     if (item) {
       item.status = status;
       if (status === WatchStatus.WATCHED) {
-        if (item.media.type !== MediaType.MOVIE && item.media.totalEpisodes) {
-          item.currentEpisode = item.media.totalEpisodes;
-        } else {
+        if (item.media.type === MediaType.MOVIE) {
           const duration = parseInt(item.media.duration) || 120;
           item.progressMinutes = duration;
+        } else if (item.media.seasonsData) {
+          item.currentSeason = item.media.seasonsData.length;
+          const history: string[] = [];
+          item.media.seasonsData.forEach(s => {
+             const count = s.episodesCount || 10;
+             for(let e=1; e<=count; e++) history.push(`S${s.seasonNumber}E${e}`);
+          });
+          item.watchedHistory = history;
+          item.currentEpisode = item.media.seasonsData[item.media.seasonsData.length - 1].episodesCount || 0;
         }
       } else if (status === WatchStatus.UNWATCHED) {
-        item.currentEpisode = 0;
         item.progressMinutes = 0;
+        item.currentSeason = item.media.type === MediaType.MOVIE ? undefined : 1;
+        item.currentEpisode = item.media.type === MediaType.MOVIE ? undefined : 0;
+        item.watchedHistory = item.media.type === MediaType.MOVIE ? undefined : [];
       }
       this.save();
     }
     return list;
   }
 
-  async updateEpisodeProgress(listId: string, mediaId: string, episode: number) {
+  async setSeriesMarkers(listId: string, mediaId: string, season: number, episode: number) {
     const list = await this.getListById(listId);
     if (!list) return null;
     const item = list.items.find(i => i.media.id === mediaId);
-    if (item && item.media.totalEpisodes) {
-      item.currentEpisode = Math.max(0, Math.min(episode, item.media.totalEpisodes));
-      if (item.currentEpisode === item.media.totalEpisodes) {
+    
+    if (item && item.media.type !== MediaType.MOVIE && item.media.seasonsData) {
+      // Atualiza os seletores atuais
+      item.currentSeason = season;
+      item.currentEpisode = episode;
+      
+      if (!item.watchedHistory) item.watchedHistory = [];
+
+      // Filtra o histórico para remover episódios da temporada ATUAL que são MAIORES que o selecionado
+      // Isso permite que o usuário use o botão "-" para desmarcar episódios da temporada atual.
+      item.watchedHistory = item.watchedHistory.filter(h => {
+        const match = h.match(/S(\d+)E(\d+)/);
+        if (match) {
+          const s = parseInt(match[1]);
+          const e = parseInt(match[2]);
+          if (s === season) {
+            return e <= episode;
+          }
+        }
+        return true;
+      });
+
+      // Adiciona todos os episódios até o 'episode' na temporada atual ao histórico
+      for (let e = 1; e <= episode; e++) {
+        const epKey = `S${season}E${e}`;
+        if (!item.watchedHistory.includes(epKey)) {
+          item.watchedHistory.push(epKey);
+        }
+      }
+      
+      // Validação de Status (Watched se todas as temporadas conhecidas estiverem completas)
+      const totalEpsEstimated = item.media.seasonsData.reduce((acc, s) => acc + (s.episodesCount || 10), 0);
+      
+      if (item.watchedHistory.length >= totalEpsEstimated) {
         item.status = WatchStatus.WATCHED;
-      } else if (item.currentEpisode > 0) {
+      } else if (item.watchedHistory.length > 0) {
         item.status = WatchStatus.WATCHING;
       } else {
         item.status = WatchStatus.UNWATCHED;
       }
+
+      this.save();
+    }
+    return list;
+  }
+
+  async updateDetailedProgress(listId: string, mediaId: string, season: number, episode: number) {
+    const list = await this.getListById(listId);
+    if (!list) return null;
+    const item = list.items.find(i => i.media.id === mediaId);
+    if (item && item.media.type !== MediaType.MOVIE && item.media.seasonsData) {
+      item.currentSeason = season;
+      item.currentEpisode = episode;
+      
+      const epKey = `S${season}E${episode}`;
+      if (!item.watchedHistory) item.watchedHistory = [];
+      if (!item.watchedHistory.includes(epKey)) {
+        item.watchedHistory.push(epKey);
+      } else {
+        item.watchedHistory = item.watchedHistory.filter(h => h !== epKey);
+      }
+
+      const totalEpsEstimated = item.media.seasonsData.reduce((acc, s) => acc + (s.episodesCount || 10), 0);
+      if (item.watchedHistory.length >= totalEpsEstimated) {
+        item.status = WatchStatus.WATCHED;
+      } else if (item.watchedHistory.length > 0) {
+        item.status = WatchStatus.WATCHING;
+      } else {
+        item.status = WatchStatus.UNWATCHED;
+      }
+
       this.save();
     }
     return list;
@@ -222,9 +326,10 @@ class LocalDatabase {
     const list = await this.getListById(listId);
     if (!list) return null;
     const item = list.items.find(i => i.media.id === mediaId);
-    if (item) {
+    if (item && item.media.type === MediaType.MOVIE) {
       const duration = parseInt(item.media.duration) || 120;
-      item.progressMinutes = Math.max(0, Math.min(minutes, duration));
+      item.progressMinutes = Math.min(duration, Math.max(0, minutes));
+      
       if (item.progressMinutes === duration) {
         item.status = WatchStatus.WATCHED;
       } else if (item.progressMinutes > 0) {
@@ -241,14 +346,16 @@ class LocalDatabase {
     if (!list.items.length) return 0;
     const totalProgress = list.items.reduce((acc, item) => {
       if (item.status === WatchStatus.WATCHED) return acc + 100;
+      
       if (item.media.type === MediaType.MOVIE) {
         const duration = parseInt(item.media.duration) || 120;
         const current = item.progressMinutes || 0;
         return acc + (current / duration * 100);
       } else {
-        const totalEps = item.media.totalEpisodes || 1;
-        const current = item.currentEpisode || 0;
-        return acc + (current / totalEps * 100);
+        const totalSeasons = item.media.totalSeasons || 1;
+        const totalEpsEstimated = item.media.seasonsData?.reduce((sAcc, s) => sAcc + (s.episodesCount || 10), 0) || (totalSeasons * 10);
+        const watched = item.watchedHistory?.length || 0;
+        return acc + (watched / Math.max(1, totalEpsEstimated) * 100);
       }
     }, 0);
     return Math.round(totalProgress / list.items.length);
@@ -259,8 +366,6 @@ class LocalDatabase {
   async searchGlobalMovies(query: string) { 
     const local = MOCK_MOVIES.filter(m => m.title.toLowerCase().includes(query.toLowerCase()));
     const remote = await omdbService.searchMovies(query);
-    
-    // Combina local e remoto removendo duplicatas por ID
     const combined = [...local, ...remote];
     const seen = new Set();
     return combined.filter(m => {
@@ -331,9 +436,7 @@ class LocalDatabase {
     return list;
   }
 
-  // --- BADGE SYSTEM ---
   async getGlobalBadges() { return this.data.globalBadges; }
-
   async createGlobalBadge(name: string, description: string, icon: string) {
     const newBadge: Badge = {
       id: `gb_${Date.now()}`,
@@ -349,10 +452,9 @@ class LocalDatabase {
   }
 
   async grantBadgeToUser(userId: string, badgeId: string) {
-    const user = await this.getUserById(userId);
+    const user = await db.getUserById(userId);
     const badge = this.data.globalBadges.find(b => b.id === badgeId);
     if (!user || !badge) return;
-
     if (!user.badges.some(b => b.id === badgeId)) {
       user.badges.push({ ...badge, earnedDate: new Date().toISOString().split('T')[0] });
       const admin = await this.getCurrentUser();
@@ -375,19 +477,16 @@ class LocalDatabase {
   async getNotifications() { return this.data.notifications.filter(n => n.userId === this.currentUserId).sort((a,b) => b.timestamp - a.timestamp); }
   async markAllNotificationsRead() { this.data.notifications.forEach(n => { if(n.userId === this.currentUserId) n.isRead = true; }); this.save(); }
   async getUnreadNotificationCount() { return this.data.notifications.filter(n => n.userId === this.currentUserId && !n.isRead).length; }
-
   async updateNotificationSettings(settings: NotificationSettings) {
     const me = await this.getCurrentUser();
     if (me) { me.notificationSettings = settings; this.save(); }
   }
-
   async resetData() { localStorage.removeItem(DB_KEY); localStorage.removeItem(SESSION_KEY); window.location.reload(); }
   async getAchievementStats(userId: string) {
     const user = await this.getUserById(userId);
     const lists = this.data.lists.filter(l => l.creatorId === userId);
     return { listsCreated: lists.length, moviesAdded: lists.reduce((acc, l) => acc + l.items.length, 0), likesGiven: 0, followers: user?.followers || 0, daysJoined: user ? Math.floor((Date.now() - user.joinedAt) / (1000 * 60 * 60 * 24)) : 0 };
   }
-
   async getActivityFeed(): Promise<ActivityItem[]> {
     const me = await this.getCurrentUser();
     if (!me) return [];
@@ -399,23 +498,19 @@ class LocalDatabase {
     });
     return feed.sort((a, b) => b.timestamp - a.timestamp);
   }
-
   async followList(listId: string) {
     const me = await this.getCurrentUser();
     if (me && !me.followedListIds.includes(listId)) { me.followedListIds.push(listId); this.save(); }
   }
   async unfollowList(listId: string) {
     const me = await this.getCurrentUser();
-    // Corrected targetId to listId
     if (me) { me.followedListIds = me.followedListIds.filter(id => id !== listId); this.save(); }
   }
-
   async submitReport(targetId: string, targetType: 'list' | 'user', reason: ReportReason, details: string) {
     const reporter = await this.getCurrentUser();
     this.data.reports.push({ id: `rep_${Date.now()}`, reporterId: reporter?.id || 'anon', reporterName: reporter?.name || 'Anônimo', targetId, targetType, reason, details, timestamp: Date.now(), status: 'pending' });
     this.save();
   }
-
   async respondToReport(reportId: string, adminResponse: string) {
     const report = this.data.reports.find(r => r.id === reportId);
     if (report) {
@@ -429,7 +524,6 @@ class LocalDatabase {
       this.save();
     }
   }
-
   async issueStrike(userId: string, reason: string) {
     const admin = await this.getCurrentUser();
     const user = this.data.users.find(u => u.id === userId);
@@ -440,7 +534,6 @@ class LocalDatabase {
       this.save();
     }
   }
-
   async banUser(userId: string, reason: string) {
     const user = this.data.users.find(u => u.id === userId);
     if (user) {

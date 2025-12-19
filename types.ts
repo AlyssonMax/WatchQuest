@@ -3,6 +3,7 @@ export enum MediaType {
   MOVIE = 'Movie',
   SERIES = 'Series',
   ANIME = 'Anime',
+  CARTOON = 'Cartoon',
 }
 
 export enum PrivacyLevel {
@@ -35,6 +36,25 @@ export enum ListCategory {
   CHALLENGE = 'Challenge',
 }
 
+export enum ReportReason {
+  INAPPROPRIATE_CONTENT = 'INAPPROPRIATE_CONTENT',
+  INCORRECT_INFO = 'INCORRECT_INFO',
+  SPAM = 'SPAM',
+  OTHER = 'OTHER',
+}
+
+export interface Episode {
+  episodeNumber: number;
+  watched: boolean;
+  rating?: number;
+}
+
+export interface Season {
+  seasonNumber: number;
+  episodesCount: number; 
+  episodes?: Episode[]; // Lazy loaded: undefined significa que os dados ainda não foram buscados na API
+}
+
 export interface Movie {
   id: string;
   title: string;
@@ -44,21 +64,21 @@ export interface Movie {
   poster: string;
   synopsis: string;
   availableOn: string[];
-  // Added type and totalEpisodes for consistency with db.ts and ListViewScreen
   type: MediaType;
-  totalEpisodes?: number;
+  // Campos definitivos para SERIES/ANIME/CARTOON
+  totalSeasons?: number;
+  seasonsData?: Season[];
 }
 
-// Added Media alias as used in db.ts
 export type Media = Movie;
 
 export interface ListItem {
-  // Renamed from movie to media to align with db.ts and ListViewScreen
   media: Media;
   status: WatchStatus;
-  progressMinutes?: number;
-  // Added currentEpisode for episodic content
-  currentEpisode?: number;
+  progressMinutes?: number; // Exclusivo para Movies
+  currentSeason?: number;   // Última temporada visualizada pelo usuário
+  currentEpisode?: number;  // Último episódio assistido (para feedback rápido)
+  watchedHistory?: string[]; // IDs de episódios assistidos: ["S1E1", "S1E2"]
 }
 
 export interface Reaction {
@@ -118,22 +138,6 @@ export interface Strike {
   issuedByAdminId: string;
 }
 
-export interface AdminLog {
-  id: string;
-  adminId: string;
-  adminName: string;
-  targetUserId: string;
-  actionType: 'RESET_PASSWORD' | 'ISSUE_WARNING' | 'BAN_USER';
-  metadata: any;
-  timestamp: number;
-}
-
-export interface BannedEmail {
-  email: string;
-  bannedAt: number;
-  reason: string;
-}
-
 export interface User {
   id: string;
   name: string;
@@ -161,11 +165,18 @@ export interface User {
   banReason?: string;
 }
 
-export enum ReportReason {
-  INAPPROPRIATE_CONTENT = 'Inappropriate Image/Content',
-  INCORRECT_INFO = 'Incorrect Movie Information',
-  SPAM = 'Spam',
-  OTHER = 'Other'
+export interface AdminLog {
+  id: string;
+  actionType: string;
+  adminName: string;
+  targetUserId: string;
+  timestamp: number;
+}
+
+export interface BannedEmail {
+  email: string;
+  bannedAt: number;
+  reason: string;
 }
 
 export interface Report {
@@ -174,7 +185,7 @@ export interface Report {
   reporterName: string;
   targetId: string;
   targetType: 'list' | 'user';
-  reason: ReportReason;
+  reason: ReportReason | string;
   details: string;
   timestamp: number;
   status: 'pending' | 'resolved';
