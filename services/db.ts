@@ -28,13 +28,37 @@ class LocalDatabase {
 
     if (stored) {
       this.data = JSON.parse(stored);
+      
+      // MIGRATION: Ensure all top-level collections exist
+      if (!this.data.reports) this.data.reports = [];
+      if (!this.data.notifications) this.data.notifications = [];
+      if (!this.data.adminLogs) this.data.adminLogs = [];
+      if (!this.data.blacklist) this.data.blacklist = [];
+      if (!this.data.globalBadges) this.data.globalBadges = Object.values(SYSTEM_BADGES);
+
+      // MIGRATION: Ensure user properties exist
+      this.data.users.forEach(u => {
+        if (!u.hiddenPatchIds) u.hiddenPatchIds = [];
+        if (!u.hiddenBadgeIds) u.hiddenBadgeIds = [];
+        if (!u.strikes) u.strikes = [];
+        if (u.isPermanentlyBanned === undefined) u.isPermanentlyBanned = false;
+        if (!u.followedListIds) u.followedListIds = [];
+        if (!u.followingIds) u.followingIds = [];
+      });
+
+      // MIGRATION: Ensure list properties exist
+      this.data.lists.forEach(l => {
+        if (!l.reactions) l.reactions = [];
+        if (!l.comments) l.comments = [];
+      });
+
       this.cleanupExpiredStrikes();
     } else {
       this.data = {
         users: [
-          { ...CURRENT_USER, strikes: [], isPermanentlyBanned: false },
-          { ...ADMIN_USER, strikes: [], isPermanentlyBanned: false },
-          ...ADDITIONAL_USERS.map(u => ({ ...u, strikes: [], isPermanentlyBanned: false }))
+          { ...CURRENT_USER, strikes: [], isPermanentlyBanned: false, hiddenPatchIds: [], hiddenBadgeIds: [] },
+          { ...ADMIN_USER, strikes: [], isPermanentlyBanned: false, hiddenPatchIds: [], hiddenBadgeIds: [] },
+          ...ADDITIONAL_USERS.map(u => ({ ...u, strikes: [], isPermanentlyBanned: false, hiddenPatchIds: [], hiddenBadgeIds: [] }))
         ],
         lists: MOCK_LISTS,
         reports: [],
@@ -64,6 +88,7 @@ class LocalDatabase {
       isRead: false,
       timestamp: Date.now()
     };
+    if (!this.data.notifications) this.data.notifications = [];
     this.data.notifications.push(newNotification);
     this.save();
   }
@@ -117,7 +142,9 @@ class LocalDatabase {
       watchProgress: {},
       notificationSettings: { likes: true, comments: true, follows: true, mentions: true },
       strikes: [],
-      isPermanentlyBanned: false
+      isPermanentlyBanned: false,
+      hiddenPatchIds: [],
+      hiddenBadgeIds: []
     };
 
     this.data.users.push(newUser);
@@ -248,14 +275,11 @@ class LocalDatabase {
     const item = list.items.find(i => i.media.id === mediaId);
     
     if (item && item.media.type !== MediaType.MOVIE && item.media.seasonsData) {
-      // Atualiza os seletores atuais
       item.currentSeason = season;
       item.currentEpisode = episode;
       
       if (!item.watchedHistory) item.watchedHistory = [];
 
-      // Filtra o histórico para remover episódios da temporada ATUAL que são MAIORES que o selecionado
-      // Isso permite que o usuário use o botão "-" para desmarcar episódios da temporada atual.
       item.watchedHistory = item.watchedHistory.filter(h => {
         const match = h.match(/S(\d+)E(\d+)/);
         if (match) {
@@ -268,7 +292,6 @@ class LocalDatabase {
         return true;
       });
 
-      // Adiciona todos os episódios até o 'episode' na temporada atual ao histórico
       for (let e = 1; e <= episode; e++) {
         const epKey = `S${season}E${e}`;
         if (!item.watchedHistory.includes(epKey)) {
@@ -276,7 +299,6 @@ class LocalDatabase {
         }
       }
       
-      // Validação de Status (Watched se todas as temporadas conhecidas estiverem completas)
       const totalEpsEstimated = item.media.seasonsData.reduce((acc, s) => acc + (s.episodesCount || 10), 0);
       
       if (item.watchedHistory.length >= totalEpsEstimated) {
@@ -412,28 +434,67 @@ class LocalDatabase {
     const me = await this.getCurrentUser();
     const list = await this.getListById(listId);
     if (!me || !list) return [];
-    const existing = list.reactions.find(r => r.userId === me.id && r.emoji === emoji);
-    if (existing) {
-      list.reactions = list.reactions.filter(r => r.id !== existing.id);
+    
+    if (!list.reactions) list.reactions = [];
+    
+    // Garantir exclusividade: apenas uma reação por usuário
+    const existingReactionIndex = list.reactions.findIndex(r => r.userId === me.id);
+
+    if (existingReactionIndex !== -1) {
+        const currentEmoji = list.reactions[existingReactionIndex].emoji;
+        if (currentEmoji === emoji) {
+            // Desmarcar (toggle off) se for o mesmo emoji
+            list.reactions.splice(existingReactionIndex, 1);
+        } else {
+            // Substituir pelo novo se for diferente
+            list.reactions[existingReactionIndex].emoji = emoji;
+            list.reactions[existingReactionIndex].timestamp = Date.now();
+        }
     } else {
-      list.reactions.push({ id: `re_${Date.now()}`, userId: me.id, emoji, timestamp: Date.now() });
-      if (list.creatorId !== me.id) this.createNotification(list.creatorId, 'like', me, list.id, `reacted ${emoji} to your list "${list.title}"`);
+        // Nova reação
+        list.reactions.push({ id: `re_${Date.now()}`, userId: me.id, emoji, timestamp: Date.now() });
+        if (list.creatorId !== me.id) {
+            this.createNotification(list.creatorId, 'like', me, list.id, `reacted ${emoji} to your list "${list.title}"`);
+        }
     }
+    
     this.save();
-    return list.reactions;
+    return [...list.reactions];
   }
 
   async addComment(listId: string, text: string, replyToId?: string) {
     const me = await this.getCurrentUser();
     const list = await this.getListById(listId);
     if (!me || !list) throw new Error("Not found");
-    const newComment: Comment = { id: `c_${Date.now()}`, userId: me.id, userName: me.name, userAvatar: me.avatar, text, timestamp: Date.now(), replies: [] };
+    
+    if (!list.comments) list.comments = [];
+    
+    const newComment: Comment = { 
+      id: `c_${Date.now()}`, 
+      userId: me.id, 
+      userName: me.name, 
+      userAvatar: me.avatar, 
+      text, 
+      timestamp: Date.now(), 
+      replies: [] 
+    };
+
     if (replyToId) {
       const parent = list.comments.find(c => c.id === replyToId);
-      if (parent) parent.replies?.push(newComment);
-    } else list.comments.push(newComment);
+      if (parent) {
+          if (!parent.replies) parent.replies = [];
+          parent.replies.push(newComment);
+      }
+    } else {
+        list.comments.push(newComment);
+    }
+    
+    if (list.creatorId !== me.id) {
+        this.createNotification(list.creatorId, 'comment', me, list.id, `commented on your list "${list.title}"`);
+    }
+
     this.save();
-    return list;
+    return { ...list };
   }
 
   async getGlobalBadges() { return this.data.globalBadges; }
@@ -452,13 +513,13 @@ class LocalDatabase {
   }
 
   async grantBadgeToUser(userId: string, badgeId: string) {
-    const user = await db.getUserById(userId);
+    const user = await this.getUserById(userId);
     const badge = this.data.globalBadges.find(b => b.id === badgeId);
     if (!user || !badge) return;
     if (!user.badges.some(b => b.id === badgeId)) {
       user.badges.push({ ...badge, earnedDate: new Date().toISOString().split('T')[0] });
       const admin = await this.getCurrentUser();
-      this.createNotification(userId, 'mention', admin!, undefined, `Conquista desbloqueada: ${badge.name}`);
+      this.createNotification(userId, 'mention', admin!, undefined, `Achievement unlocked: ${badge.name}`);
       this.save();
     }
   }
@@ -474,9 +535,14 @@ class LocalDatabase {
       activeWarnings: this.data.users.reduce((acc, u) => acc + u.strikes.length, 0)
     };
   }
-  async getNotifications() { return this.data.notifications.filter(n => n.userId === this.currentUserId).sort((a,b) => b.timestamp - a.timestamp); }
-  async markAllNotificationsRead() { this.data.notifications.forEach(n => { if(n.userId === this.currentUserId) n.isRead = true; }); this.save(); }
-  async getUnreadNotificationCount() { return this.data.notifications.filter(n => n.userId === this.currentUserId && !n.isRead).length; }
+  async getNotifications() { return (this.data.notifications || []).filter(n => n.userId === this.currentUserId).sort((a,b) => b.timestamp - a.timestamp); }
+  async markAllNotificationsRead() { 
+    if (this.data.notifications) {
+        this.data.notifications.forEach(n => { if(n.userId === this.currentUserId) n.isRead = true; }); 
+        this.save(); 
+    }
+  }
+  async getUnreadNotificationCount() { return (this.data.notifications || []).filter(n => n.userId === this.currentUserId && !n.isRead).length; }
   async updateNotificationSettings(settings: NotificationSettings) {
     const me = await this.getCurrentUser();
     if (me) { me.notificationSettings = settings; this.save(); }
@@ -493,7 +559,7 @@ class LocalDatabase {
     const feed: ActivityItem[] = [];
     const followedUsers = this.data.users.filter(u => me.followingIds.includes(u.id));
     followedUsers.forEach(u => {
-      this.data.lists.filter(l => l.creatorId === u.id).forEach(l => feed.push({ id: `act_l_${l.id}`, type: 'list_created', user: u, timestamp: parseInt(l.id.split('_')[1]), data: l }));
+      this.data.lists.filter(l => l.creatorId === u.id).forEach(l => feed.push({ id: `act_l_${l.id}`, type: 'list_created', user: u, timestamp: parseInt(l.id.split('_')[1] || Date.now().toString()), data: l }));
       u.badges.forEach(b => feed.push({ id: `act_b_${b.id}`, type: 'badge_earned', user: u, timestamp: Date.now(), data: b }));
     });
     return feed.sort((a, b) => b.timestamp - a.timestamp);
@@ -508,6 +574,7 @@ class LocalDatabase {
   }
   async submitReport(targetId: string, targetType: 'list' | 'user', reason: ReportReason, details: string) {
     const reporter = await this.getCurrentUser();
+    if (!this.data.reports) this.data.reports = [];
     this.data.reports.push({ id: `rep_${Date.now()}`, reporterId: reporter?.id || 'anon', reporterName: reporter?.name || 'Anônimo', targetId, targetType, reason, details, timestamp: Date.now(), status: 'pending' });
     this.save();
   }
@@ -528,9 +595,10 @@ class LocalDatabase {
     const admin = await this.getCurrentUser();
     const user = this.data.users.find(u => u.id === userId);
     if (user && admin) {
+      if (!user.strikes) user.strikes = [];
       user.strikes.push({ id: `stk_${Date.now()}`, reason, timestamp: Date.now(), expiresAt: Date.now() + STRIKE_EXPIRATION_MS, issuedByAdminId: admin.id });
-      this.createNotification(userId, 'strike_alert', admin, undefined, `Advertência aplicada: ${reason}`);
-      if (user.strikes.length >= 3) await this.banUser(userId, "Acúmulo de 3 advertências ativas.");
+      this.createNotification(userId, 'strike_alert', admin, undefined, `Warning applied: ${reason}`);
+      if (user.strikes.length >= 3) await this.banUser(userId, "Accumulation of 3 active warnings.");
       this.save();
     }
   }
@@ -539,6 +607,7 @@ class LocalDatabase {
     if (user) {
       user.isPermanentlyBanned = true;
       user.banReason = reason;
+      if (!this.data.blacklist) this.data.blacklist = [];
       if (!this.data.blacklist.some(b => b.email === user.email)) this.data.blacklist.push({ email: user.email.toLowerCase(), bannedAt: Date.now(), reason });
       this.save();
     }

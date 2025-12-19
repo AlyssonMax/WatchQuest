@@ -52,7 +52,7 @@ export interface Episode {
 export interface Season {
   seasonNumber: number;
   episodesCount: number; 
-  episodes?: Episode[]; // Lazy loaded: undefined significa que os dados ainda não foram buscados na API
+  episodes?: Episode[]; 
 }
 
 export interface Movie {
@@ -65,7 +65,6 @@ export interface Movie {
   synopsis: string;
   availableOn: string[];
   type: MediaType;
-  // Campos definitivos para SERIES/ANIME/CARTOON
   totalSeasons?: number;
   seasonsData?: Season[];
 }
@@ -75,10 +74,10 @@ export type Media = Movie;
 export interface ListItem {
   media: Media;
   status: WatchStatus;
-  progressMinutes?: number; // Exclusivo para Movies
-  currentSeason?: number;   // Última temporada visualizada pelo usuário
-  currentEpisode?: number;  // Último episódio assistido (para feedback rápido)
-  watchedHistory?: string[]; // IDs de episódios assistidos: ["S1E1", "S1E2"]
+  progressMinutes?: number;
+  currentSeason?: number;
+  currentEpisode?: number;
+  watchedHistory?: string[];
 }
 
 export interface Reaction {
@@ -163,6 +162,8 @@ export interface User {
   strikes: Strike[];
   isPermanentlyBanned: boolean;
   banReason?: string;
+  hiddenPatchIds?: string[];
+  hiddenBadgeIds?: string[];
 }
 
 export interface AdminLog {

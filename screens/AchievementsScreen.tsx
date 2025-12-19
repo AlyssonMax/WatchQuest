@@ -68,7 +68,7 @@ export const AchievementsScreen: React.FC<{ onBack: () => void }> = ({ onBack })
         }
     };
 
-    if (loading) return <div className="p-8 text-center text-gray-500">Loading achievements...</div>;
+    if (loading) return <div className="p-8 text-center text-gray-500">Loading badges...</div>;
 
     const totalUnlocked = achievements.filter(a => a.unlocked).length;
     const totalBadges = achievements.length;
@@ -81,7 +81,7 @@ export const AchievementsScreen: React.FC<{ onBack: () => void }> = ({ onBack })
                     <i className="fas fa-arrow-left text-xl"></i>
                 </button>
                 <div className="flex-1">
-                    <h2 className="text-lg font-bold text-yellow-500">Achievement Gallery</h2>
+                    <h2 className="text-lg font-bold text-yellow-500">Badge Gallery</h2>
                     <p className="text-xs text-gray-400">{totalUnlocked} / {totalBadges} Unlocked</p>
                 </div>
             </div>

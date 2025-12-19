@@ -51,46 +51,52 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ viewUserId, onLogo
             const targetId = viewUserId || me?.id;
             if (targetId) {
                 const user = await db.getUserById(targetId);
-                setProfileUser(user || null);
-                setEditForm(user || {});
-                
-                if (me && me.id !== targetId) {
-                    setIsFollowing(me.followingIds?.includes(targetId) || false);
-                }
-
-                const lists = await db.getUserLists(targetId);
-                const collection: PatchDisplay[] = [];
-
-                for (const list of lists) {
-                    if (list.badgeReward) {
-                        const progress = await db.calculateListProgress(list);
-                        collection.push({
-                            id: list.id,
-                            listId: list.id,
-                            name: list.title,
-                            icon: list.badgeReward.icon,
-                            progress: progress, 
-                            isComplete: progress === 100,
-                            source: 'creator'
-                        });
+                if (user) {
+                    setProfileUser(user);
+                    setEditForm({
+                        ...user,
+                        hiddenPatchIds: user.hiddenPatchIds || [],
+                        hiddenBadgeIds: user.hiddenBadgeIds || []
+                    });
+                    
+                    if (me && me.id !== targetId) {
+                        setIsFollowing(me.followingIds?.includes(targetId) || false);
                     }
-                }
 
-                user?.badges.filter(b => b.type === BadgeType.COMMUNITY).forEach(badge => {
-                    if (badge.relatedListId && !collection.find(c => c.listId === badge.relatedListId)) {
-                        collection.push({
-                            id: badge.id,
-                            listId: badge.relatedListId,
-                            name: badge.name, 
-                            icon: badge.icon,
-                            progress: 100,
-                            isComplete: true,
-                            source: 'earner'
-                        });
+                    const lists = await db.getUserLists(targetId);
+                    const collection: PatchDisplay[] = [];
+
+                    for (const list of lists) {
+                        if (list.badgeReward) {
+                            const progress = await db.calculateListProgress(list);
+                            collection.push({
+                                id: list.id,
+                                listId: list.id,
+                                name: list.title,
+                                icon: list.badgeReward.icon,
+                                progress: progress, 
+                                isComplete: progress === 100,
+                                source: 'creator'
+                            });
+                        }
                     }
-                });
 
-                setPatchCollection(collection);
+                    user.badges.filter(b => b.type === BadgeType.COMMUNITY).forEach(badge => {
+                        if (badge.relatedListId && !collection.find(c => c.listId === badge.relatedListId)) {
+                            collection.push({
+                                id: badge.id,
+                                listId: badge.relatedListId,
+                                name: badge.name, 
+                                icon: badge.icon,
+                                progress: 100,
+                                isComplete: true,
+                                source: 'earner'
+                            });
+                        }
+                    });
+
+                    setPatchCollection(collection);
+                }
             }
         } catch (e) {
             console.error(e);
@@ -138,6 +144,26 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ viewUserId, onLogo
         }
     };
 
+    const togglePatchVisibility = (patchId: string) => {
+        const hiddenIds = editForm.hiddenPatchIds || [];
+        const isHidden = hiddenIds.includes(patchId);
+        const nextHiddenIds = isHidden 
+            ? hiddenIds.filter(id => id !== patchId)
+            : [...hiddenIds, patchId];
+        
+        setEditForm(prev => ({ ...prev, hiddenPatchIds: nextHiddenIds }));
+    };
+
+    const toggleBadgeVisibility = (badgeId: string) => {
+        const hiddenIds = editForm.hiddenBadgeIds || [];
+        const isHidden = hiddenIds.includes(badgeId);
+        const nextHiddenIds = isHidden 
+            ? hiddenIds.filter(id => id !== badgeId)
+            : [...hiddenIds, badgeId];
+        
+        setEditForm(prev => ({ ...prev, hiddenBadgeIds: nextHiddenIds }));
+    };
+
     const openFollowModal = async (type: 'followers' | 'following') => {
         if (!profileUser) return;
         setFollowModalType(type);
@@ -156,7 +182,21 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ viewUserId, onLogo
     if (!profileUser) return <div className="p-8 text-center text-gray-500">Loading profile...</div>;
 
     const isOwnProfile = currentUser?.id === profileUser.id;
-    const officialBadges = profileUser.badges.filter(b => b.type === BadgeType.OFFICIAL);
+    
+    // Official Badges Filter
+    const allOfficialBadges = profileUser.badges.filter(b => b.type === BadgeType.OFFICIAL);
+    const visibleOfficialBadges = allOfficialBadges.filter(badge => {
+        if (isOwnProfile) return true;
+        const hiddenIds = profileUser.hiddenBadgeIds || [];
+        return !hiddenIds.includes(badge.id);
+    });
+
+    // Patches Filter
+    const visiblePatches = patchCollection.filter(patch => {
+        if (isOwnProfile) return true;
+        const hiddenIds = profileUser.hiddenPatchIds || [];
+        return !hiddenIds.includes(patch.id);
+    });
 
     return (
         <div className="pb-8">
@@ -212,8 +252,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ viewUserId, onLogo
                     </>
                 ) : (
                     <div className="space-y-3">
-                        <input type="text" className="w-full bg-gray-800 border border-gray-700 rounded-lg p-2 text-sm text-white" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} />
-                        <textarea className="w-full bg-gray-800 border border-gray-700 rounded-lg p-2 text-sm h-20 text-white" value={editForm.bio} onChange={e => setEditForm({...editForm, bio: e.target.value})} />
+                        <input type="text" className="w-full bg-gray-800 border border-gray-700 rounded-lg p-2 text-sm text-white" value={editForm.name || ''} onChange={e => setEditForm({...editForm, name: e.target.value})} />
+                        <textarea className="w-full bg-gray-800 border border-gray-700 rounded-lg p-2 text-sm h-20 text-white" value={editForm.bio || ''} onChange={e => setEditForm({...editForm, bio: e.target.value})} />
                     </div>
                 )}
                 
@@ -229,70 +269,116 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ viewUserId, onLogo
                 </div>
             </div>
 
-            {/* Official Achievements Section */}
+            {/* Badges Section */}
             <div className="mt-8 px-4">
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest flex items-center">
-                        <i className="fas fa-award mr-2 text-yellow-500"></i> Official Achievements
+                        <i className="fas fa-award mr-2 text-yellow-500"></i> Badges
+                        {isOwnProfile && isEditing && (
+                            <span className="ml-2 text-[8px] normal-case bg-yellow-900/40 text-yellow-500 px-2 py-0.5 rounded">Select visibility</span>
+                        )}
                     </h3>
-                    {/* READICIONADO O LINK PARA A GALERIA */}
                     <button onClick={() => onNavigate('achievements')} className="text-[10px] text-purple-400 font-black uppercase tracking-widest hover:underline">
                         View Gallery
                     </button>
                 </div>
-                {officialBadges.length === 0 ? (
-                     <p className="text-gray-600 text-xs italic">No achievements yet.</p>
+                {visibleOfficialBadges.length === 0 ? (
+                     <p className="text-gray-600 text-xs italic">No badges visible.</p>
                 ) : (
                     <div className="grid grid-cols-2 gap-3">
-                        {officialBadges.map(badge => (
-                            <div key={badge.id} className="bg-gray-800 border border-yellow-500/20 p-3 rounded-2xl flex items-center space-x-3">
-                                <div className="w-10 h-10 flex-shrink-0 bg-yellow-500/10 rounded-full flex items-center justify-center text-yellow-500">
-                                    {isImageUrl(badge.icon) ? <img src={badge.icon} className="w-full h-full object-contain" /> : <i className={`fas ${badge.icon} text-xl`}></i>}
+                        {visibleOfficialBadges.map(badge => {
+                            const isHidden = (isEditing ? editForm.hiddenBadgeIds : profileUser.hiddenBadgeIds)?.includes(badge.id);
+                            
+                            return (
+                                <div 
+                                    key={badge.id} 
+                                    className={`bg-gray-800 border p-3 rounded-2xl flex items-center space-x-3 transition-all relative ${isHidden ? 'border-red-500/30 opacity-40 grayscale' : 'border-yellow-500/20 opacity-100'} ${isEditing && isOwnProfile ? 'cursor-pointer hover:border-yellow-500' : ''}`}
+                                    onClick={() => isEditing && isOwnProfile && toggleBadgeVisibility(badge.id)}
+                                >
+                                    <div className="w-10 h-10 flex-shrink-0 bg-yellow-500/10 rounded-full flex items-center justify-center text-yellow-500">
+                                        {isImageUrl(badge.icon) ? <img src={badge.icon} className="w-full h-full object-contain" /> : <i className={`fas ${badge.icon} text-xl`}></i>}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-[11px] font-black text-white truncate">{badge.name}</p>
+                                        <p className="text-[8px] text-gray-500 font-bold uppercase">{badge.earnedDate}</p>
+                                    </div>
+
+                                    {/* Visual Indicator for visibility */}
+                                    {isOwnProfile && isEditing && (
+                                        <div className={`w-5 h-5 rounded-full flex items-center justify-center border shadow-sm ${isHidden ? 'bg-red-500/20 border-red-500 text-red-500' : 'bg-green-500/20 border-green-500 text-green-500'}`}>
+                                            <i className={`fas ${isHidden ? 'fa-eye-slash' : 'fa-eye'} text-[8px]`}></i>
+                                        </div>
+                                    )}
                                 </div>
-                                <div className="min-w-0">
-                                    <p className="text-[11px] font-black text-white truncate">{badge.name}</p>
-                                    <p className="text-[8px] text-gray-500 font-bold uppercase">{badge.earnedDate}</p>
-                                </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
             </div>
 
-            {/* Patches Collection */}
+            {/* Patches Section */}
              <div className="mt-8 px-4">
                 <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest mb-4 flex items-center">
-                    <i className="fas fa-layer-group mr-2 text-purple-500"></i> Collection Patches
+                    <i className="fas fa-layer-group mr-2 text-purple-500"></i> Patches
+                    {isOwnProfile && isEditing && (
+                        <span className="ml-2 text-[8px] normal-case bg-purple-900/40 text-purple-400 px-2 py-0.5 rounded">Tap to hide/show</span>
+                    )}
                 </h3>
-                {patchCollection.length === 0 ? (
-                     <p className="text-gray-600 text-xs italic">No patches yet.</p>
+                {visiblePatches.length === 0 ? (
+                     <p className="text-gray-600 text-xs italic">No patches visible.</p>
                 ) : (
                     <div className="grid grid-cols-4 gap-4">
-                        {patchCollection.map(patch => (
-                            <div 
-                                key={patch.id} 
-                                className="flex flex-col items-center group cursor-pointer"
-                                onClick={() => onNavigate('list_detail', { listId: patch.listId })}
-                            >
-                                <div className="relative w-16 h-16">
-                                     <div className={`w-full h-full rounded-full overflow-hidden transition-all duration-500 ${!patch.isComplete ? 'grayscale brightness-[0.2] opacity-70' : 'drop-shadow-[0_0_12px_rgba(168,85,247,0.6)] scale-105'}`}>
-                                        {isImageUrl(patch.icon) ? (
-                                            <img src={patch.icon} className="w-full h-full object-contain" />
-                                        ) : (
-                                            <div className="w-full h-full bg-gray-700 flex items-center justify-center">
-                                                <i className={`fas ${patch.icon} text-gray-400`}></i>
-                                            </div>
-                                        )}
-                                     </div>
-                                     {!patch.isComplete && (
-                                         <div className="absolute inset-0 flex items-center justify-center">
-                                             <span className="text-white text-[10px] font-black drop-shadow-md">{patch.progress}%</span>
+                        {visiblePatches.map(patch => {
+                            const isCurrentlyHidden = (isEditing ? editForm.hiddenPatchIds : profileUser.hiddenPatchIds)?.includes(patch.id);
+                            
+                            return (
+                                <div 
+                                    key={patch.id} 
+                                    className={`flex flex-col items-center group cursor-pointer relative transition-all ${isCurrentlyHidden ? 'opacity-40 scale-95' : 'opacity-100 scale-100'}`}
+                                    onClick={() => {
+                                        if (isEditing && isOwnProfile) {
+                                            togglePatchVisibility(patch.id);
+                                        } else {
+                                            onNavigate('list_detail', { listId: patch.listId });
+                                        }
+                                    }}
+                                >
+                                    <div className="relative w-16 h-16">
+                                         <div className={`w-full h-full rounded-full overflow-hidden transition-all duration-500 ${!patch.isComplete ? 'grayscale brightness-[0.2] opacity-70' : 'drop-shadow-[0_0_12px_rgba(168,85,247,0.6)]'}`}>
+                                            {isImageUrl(patch.icon) ? (
+                                                <img src={patch.icon} className="w-full h-full object-contain" />
+                                            ) : (
+                                                <div className="w-full h-full bg-gray-700 flex items-center justify-center">
+                                                    <i className={`fas ${patch.icon} text-gray-400`}></i>
+                                                </div>
+                                            )}
                                          </div>
-                                     )}
+                                         {!patch.isComplete && !isCurrentlyHidden && (
+                                             <div className="absolute inset-0 flex items-center justify-center">
+                                                 <span className="text-white text-[10px] font-black drop-shadow-md">{patch.progress}%</span>
+                                             </div>
+                                         )}
+                                         
+                                         {/* Indicator for Hidden Status (Owner Only) */}
+                                         {isOwnProfile && isCurrentlyHidden && (
+                                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-full">
+                                                <i className="fas fa-eye-slash text-white text-xs"></i>
+                                            </div>
+                                         )}
+
+                                         {/* Edit Mode Visual Indicator */}
+                                         {isEditing && isOwnProfile && (
+                                            <div className="absolute -top-1 -right-1 w-6 h-6 bg-gray-900 rounded-full flex items-center justify-center border border-gray-700 shadow-xl z-10">
+                                                <i className={`fas ${isCurrentlyHidden ? 'fa-eye-slash text-red-500' : 'fa-eye text-green-500'} text-[8px]`}></i>
+                                            </div>
+                                         )}
+                                    </div>
+                                    <div className={`text-[9px] mt-2 text-center truncate w-full uppercase font-bold transition-colors ${isCurrentlyHidden ? 'text-red-500/60' : 'text-gray-400'}`}>
+                                        {patch.name}
+                                    </div>
                                 </div>
-                                <div className="text-[9px] text-gray-400 mt-2 text-center truncate w-full uppercase font-bold">{patch.name}</div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
             </div>

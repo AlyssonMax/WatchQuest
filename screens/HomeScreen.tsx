@@ -102,7 +102,7 @@ export const HomeScreen: React.FC<{ onNavigate: (tab: string, params?: any) => v
 };
 
 const FeedCard: React.FC<{ list: MediaList; onOpen: () => void; onReport: () => void; onUserClick: () => void }> = ({ list, onOpen, onReport, onUserClick }) => {
-    const [reactions, setReactions] = useState<Reaction[]>(list.reactions);
+    const [reactions, setReactions] = useState<Reaction[]>(list.reactions || []);
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const [showMenu, setShowMenu] = useState(false);
     const [user, setUser] = useState<any>(null);
@@ -124,12 +124,23 @@ const FeedCard: React.FC<{ list: MediaList; onOpen: () => void; onReport: () => 
         if(!user) return;
         
         const previousReactions = [...reactions];
-        const existing = reactions.find(r => r.userId === user.id && r.emoji === emoji);
-        if (existing) {
-            setReactions(reactions.filter(r => r.id !== existing.id));
+        const existingIndex = reactions.findIndex(r => r.userId === user.id);
+        
+        let newReactions = [...reactions];
+        if (existingIndex !== -1) {
+            if (newReactions[existingIndex].emoji === emoji) {
+                // Remove if same emoji
+                newReactions.splice(existingIndex, 1);
+            } else {
+                // Replace if different emoji
+                newReactions[existingIndex] = { ...newReactions[existingIndex], emoji, timestamp: Date.now() };
+            }
         } else {
-            setReactions([...reactions, { id: 'temp', userId: user.id, emoji, timestamp: Date.now() }]);
+            // Add new
+            newReactions.push({ id: 'temp', userId: user.id, emoji, timestamp: Date.now() });
         }
+        
+        setReactions(newReactions);
         setShowEmojiPicker(false);
 
         try {
@@ -163,7 +174,9 @@ const FeedCard: React.FC<{ list: MediaList; onOpen: () => void; onReport: () => 
         return count;
     };
     
-    const totalComments = countComments(list.comments);
+    const totalComments = countComments(list.comments || []);
+
+    const myReaction = user ? reactions.find(r => r.userId === user.id) : null;
 
     return (
         <div className="bg-gray-800 rounded-xl overflow-hidden shadow-lg border border-gray-700 relative">
@@ -255,9 +268,9 @@ const FeedCard: React.FC<{ list: MediaList; onOpen: () => void; onReport: () => 
 
                     <button 
                         onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                        className="text-gray-400 hover:text-pink-500 transition-colors flex items-center space-x-1"
+                        className={`transition-colors flex items-center space-x-1 ${myReaction ? 'text-pink-500' : 'text-gray-400 hover:text-pink-500'}`}
                     >
-                        <i className="far fa-heart text-lg"></i>
+                        <i className={`${myReaction ? 'fas' : 'far'} fa-heart text-lg`}></i>
                         <span className="text-xs">{reactions.length > 0 ? reactions.length : ''}</span>
                     </button>
                     <button onClick={onOpen} className="text-gray-400 hover:text-blue-500 transition-colors flex items-center space-x-1">
@@ -272,7 +285,7 @@ const FeedCard: React.FC<{ list: MediaList; onOpen: () => void; onReport: () => 
                             <button 
                                 key={emoji} 
                                 onClick={() => toggleReaction(emoji)}
-                                className="hover:scale-125 transition-transform text-xl p-1"
+                                className={`hover:scale-125 transition-transform text-xl p-1 ${myReaction?.emoji === emoji ? 'bg-gray-700 rounded-lg' : ''}`}
                             >
                                 {emoji}
                             </button>

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { db } from '../services/db';
-import { MediaList, WatchStatus, ReportReason, User, MediaType, ListItem } from '../types';
+import { MediaList, WatchStatus, ReportReason, User, MediaType, ListItem, Comment } from '../types';
 import { AVAILABLE_EMOJIS } from '../services/mockData';
 
 interface ListViewScreenProps {
@@ -184,6 +184,13 @@ export const ListViewScreen: React.FC<ListViewScreenProps> = ({ listId, readOnly
         setIsFollowingList(!isFollowingList);
     };
 
+    const handleToggleReaction = async (emoji: string) => {
+        if (!list || !currentUser) return;
+        const updatedReactions = await db.toggleReaction(list.id, emoji);
+        setList({ ...list, reactions: updatedReactions });
+        setShowEmojiPicker(false);
+    };
+
     const handlePostComment = async () => {
         if (!list || !commentText.trim()) return;
         const updated = await db.addComment(list.id, commentText);
@@ -195,6 +202,21 @@ export const ListViewScreen: React.FC<ListViewScreenProps> = ({ listId, readOnly
     if (!list) return <div className="p-8 text-center text-red-500">List not found</div>;
 
     const myReaction = currentUser ? list.reactions.find(r => r.userId === currentUser.id) : null;
+
+    const CommentItem: React.FC<{ comment: Comment }> = ({ comment }) => (
+        <div className="flex space-x-3 group animate-fade-in">
+            <img src={comment.userAvatar} className="w-8 h-8 rounded-full border border-gray-700 mt-1" />
+            <div className="flex-1">
+                <div className="bg-gray-800 rounded-2xl px-4 py-2 border border-gray-700">
+                    <p className="text-[10px] font-black text-purple-400 mb-0.5 uppercase tracking-wider">{comment.userName}</p>
+                    <p className="text-sm text-gray-200 leading-relaxed">{comment.text}</p>
+                </div>
+                <p className="text-[9px] text-gray-600 mt-1 ml-2 font-black uppercase tracking-widest">
+                    {new Date(comment.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </p>
+            </div>
+        </div>
+    );
 
     return (
         <div className="h-full flex flex-col bg-gray-900 relative overflow-hidden">
@@ -371,16 +393,64 @@ export const ListViewScreen: React.FC<ListViewScreenProps> = ({ listId, readOnly
                     );
                 })}
 
-                <div className="mt-8 border-t border-gray-800 pt-6 pb-20">
+                <div className="mt-8 border-t border-gray-800 pt-6 pb-24 relative">
                      <div className="flex items-center justify-between mb-4">
-                        <button onClick={() => setShowEmojiPicker(!showEmojiPicker)} className={`flex items-center space-x-2 px-4 py-2 rounded-full transition-all ${myReaction ? 'bg-pink-500/20 text-pink-500 border border-pink-500/30' : 'bg-gray-800 text-gray-500'}`}>
-                            <span className="text-lg">{myReaction ? myReaction.emoji : <i className="far fa-heart"></i>}</span>
-                            <span className="font-black text-xs">{list.reactions.length}</span>
+                        <div className="relative">
+                            <button 
+                                onClick={() => setShowEmojiPicker(!showEmojiPicker)} 
+                                className={`flex items-center space-x-2 px-4 py-2 rounded-full transition-all ${myReaction ? 'bg-pink-500/20 text-pink-500 border border-pink-500/30' : 'bg-gray-800 text-gray-500 border border-gray-700'}`}
+                            >
+                                <span className="text-lg">{myReaction ? myReaction.emoji : <i className="far fa-heart"></i>}</span>
+                                <span className="font-black text-xs">{list.reactions.length}</span>
+                            </button>
+                            
+                            {showEmojiPicker && (
+                                <div className="absolute bottom-12 left-0 bg-gray-800 border border-gray-600 rounded-2xl shadow-2xl p-2 flex gap-1 z-30 animate-fade-in-up">
+                                    {AVAILABLE_EMOJIS.map(emoji => (
+                                        <button 
+                                            key={emoji} 
+                                            onClick={() => handleToggleReaction(emoji)}
+                                            className="hover:scale-125 transition-transform text-xl p-1"
+                                        >
+                                            {emoji}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        <span className="text-[10px] text-gray-500 uppercase font-black tracking-widest">{list.comments.length} Comments</span>
+                    </div>
+
+                    <div className="flex space-x-2 mb-8">
+                        <input 
+                            type="text" 
+                            className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white focus:border-purple-500 outline-none transition-all" 
+                            placeholder="Start a conversation..." 
+                            value={commentText} 
+                            onChange={(e) => setCommentText(e.target.value)} 
+                            onKeyPress={(e) => e.key === 'Enter' && handlePostComment()}
+                        />
+                        <button 
+                            onClick={handlePostComment} 
+                            disabled={!commentText.trim()} 
+                            className="w-12 h-12 rounded-xl bg-purple-600 text-white flex items-center justify-center disabled:opacity-50 active:scale-95 transition-all shadow-lg"
+                        >
+                            <i className="fas fa-paper-plane"></i>
                         </button>
                     </div>
-                    <div className="flex space-x-2 mb-6">
-                        <input type="text" className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white focus:border-purple-500 outline-none" placeholder="Start a conversation..." value={commentText} onChange={(e) => setCommentText(e.target.value)} />
-                        <button onClick={handlePostComment} disabled={!commentText.trim()} className="w-12 h-12 rounded-xl bg-purple-600 text-white flex items-center justify-center disabled:opacity-50 active:scale-95 transition-all"><i className="fas fa-paper-plane"></i></button>
+
+                    {/* Render Comentários */}
+                    <div className="space-y-6">
+                        {list.comments.length === 0 ? (
+                            <div className="text-center py-10 opacity-30">
+                                <i className="fas fa-comments text-4xl mb-3"></i>
+                                <p className="text-[10px] font-black uppercase tracking-widest">No comments yet</p>
+                            </div>
+                        ) : (
+                            [...list.comments].sort((a,b) => b.timestamp - a.timestamp).map(c => (
+                                <CommentItem key={c.id} comment={c} />
+                            ))
+                        )}
                     </div>
                 </div>
             </div>
